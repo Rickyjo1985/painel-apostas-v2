@@ -1,5 +1,5 @@
 // ⚠️ COLOCA A TUA CHAVE DA THE ODDS API AQUI
-const ODDS_API_KEY = 'COLOCA_A_TUA_CHAVE_DA_THE_ODDS_API_AQUI';
+const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
 const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
 
 // Cache simples para poupar pedidos (guarda os dados por 30 minutos)
