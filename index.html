@@ -77,9 +77,6 @@
     <script>
         // ⚠️ COLOCA A TUA CHAVE DA THE ODDS API AQUI (mantém as aspas)
         const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
-        
-        // A tua chave da Football-Data.org (já está preenchida)
-        const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
 
         let allMatchesData = null;
         let currentTab = 'today';
@@ -88,161 +85,114 @@
             try {
                 console.log('🔍 A iniciar carregamento...');
 
-                const now = new Date();
-                const today = now.toISOString().split('T')[0];
-                const dateTo = new Date(now);
-                dateTo.setDate(dateTo.getDate() + 10);
-                const toDate = dateTo.toISOString().split('T')[0];
+                // 1. Buscar jogos e odds da The Odds API USANDO PROXY CORS
+                const oddsUrl = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=betclic,bet365,unibet`;
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(oddsUrl)}`;
+                
+                console.log('🎰 A buscar jogos e odds...');
+                const response = await fetch(proxyUrl);
 
-                console.log('📅 A buscar jogos de', today, 'até', toDate);
-
-                // 1. Buscar jogos da Football-Data.org USANDO PROXY CORS
-                const matchesUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                const proxyMatchesUrl = `https://corsproxy.io/?${encodeURIComponent(matchesUrl)}`;
-
-                const matchesResponse = await fetch(proxyMatchesUrl, {
-                    headers: { 'X-Auth-Token': FOOTBALL_API_KEY }
-                });
-
-                if (!matchesResponse.ok) throw new Error(`Erro ao carregar jogos: ${matchesResponse.status}`);
-
-                const matchesData = await matchesResponse.json();
-                const allMatches = matchesData.matches.filter(m => 
-                    m.status === 'SCHEDULED' || m.status === 'TIMED'
-                );
-
-                console.log('✅ Encontrados', allMatches.length, 'jogos');
-
-                // 2. Buscar odds da The Odds API USANDO PROXY CORS
-                let oddsMap = {};
-                try {
-                    const oddsUrl = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=betclic,bet365,unibet`;
-                    const proxyOddsUrl = `https://corsproxy.io/?${encodeURIComponent(oddsUrl)}`;
-                    
-                    console.log('🎰 A buscar odds...');
-                    const oddsResponse = await fetch(proxyOddsUrl);
-
-                    if (oddsResponse.ok) {
-                        const oddsData = await oddsResponse.json();
-                        console.log('✅ Encontradas odds para', oddsData.length, 'jogos');
-                        
-                        console.log('📋 Exemplo de nomes na The Odds API:');
-                        oddsData.slice(0, 3).forEach(event => {
-                            console.log(`  - ${event.home_team} vs ${event.away_team}`);
-                        });
-
-                        oddsData.forEach(event => {
-                            const homeTeam = event.home_team.toLowerCase();
-                            const awayTeam = event.away_team.toLowerCase();
-                            const key = `${homeTeam}|${awayTeam}`;
-
-                            const oddsInfo = {
-                                homeWin: null, draw: null, awayWin: null, over25: null, bookmaker: null
-                            };
-
-                            const preferredBookmakers = ['betclic', 'bet365', 'unibet'];
-
-                            for (const bookmakerName of preferredBookmakers) {
-                                const bookmaker = event.bookmakers?.find(b => b.key === bookmakerName);
-                                if (bookmaker) {
-                                    oddsInfo.bookmaker = bookmaker.title;
-
-                                    const h2h = bookmaker.markets?.find(m => m.key === 'h2h');
-                                    if (h2h) {
-                                        const home = h2h.outcomes?.find(o => o.name === event.home_team);
-                                        const drawOutcome = h2h.outcomes?.find(o => o.name === 'Draw');
-                                        const away = h2h.outcomes?.find(o => o.name === event.away_team);
-
-                                        if (home) oddsInfo.homeWin = home.price;
-                                        if (drawOutcome) oddsInfo.draw = drawOutcome.price;
-                                        if (away) oddsInfo.awayWin = away.price;
-                                    }
-
-                                    const totals = bookmaker.markets?.find(m => m.key === 'totals');
-                                    if (totals) {
-                                        const over = totals.outcomes?.find(o => o.name === 'Over' && o.point === 2.5);
-                                        if (over) oddsInfo.over25 = over.price;
-                                    }
-                                    break;
-                                }
-                            }
-                            oddsMap[key] = oddsInfo;
-                        });
-                    } else {
-                        console.error('❌ Erro ao buscar odds:', oddsResponse.status);
-                    }
-                } catch (oddsError) {
-                    console.error('❌ Erro ao buscar odds:', oddsError);
+                if (!response.ok) {
+                    throw new Error(`Erro na API: ${response.status}`);
                 }
 
-                // 3. Função para encontrar odds de um jogo
-                function findOdds(match) {
-                    const home = match.homeTeam.name.toLowerCase();
-                    const away = match.awayTeam.name.toLowerCase();
-                    const exactKey = `${home}|${away}`;
-                    
-                    if (oddsMap[exactKey]) return oddsMap[exactKey];
+                const rawData = await response.json();
+                console.log('✅ Encontrados', rawData.length, 'eventos com odds');
 
-                    for (const [key, odds] of Object.entries(oddsMap)) {
-                        const [oddsHome, oddsAway] = key.split('|');
-                        const homeMatch = home.includes(oddsHome) || oddsHome.includes(home) || home.split(' ')[0] === oddsHome.split(' ')[0];
-                        const awayMatch = away.includes(oddsAway) || oddsAway.includes(away) || away.split(' ')[0] === oddsAway.split(' ')[0];
-                        
-                        if (homeMatch && awayMatch) {
-                            console.log(`✅ Match encontrado: ${match.homeTeam.name} vs ${match.awayTeam.name}`);
-                            return odds;
+                // 2. Processar e filtrar os dados
+                const processedMatches = rawData.map(event => {
+                    // Encontrar odds da Betclic, bet365 ou unibet
+                    const preferredBookmakers = ['betclic', 'bet365', 'unibet'];
+                    let bestBookmaker = null;
+                    let oddsInfo = { homeWin: null, draw: null, awayWin: null, over25: null, bookmaker: 'Indisponível' };
+
+                    for (const bkName of preferredBookmakers) {
+                        const bk = event.bookmakers?.find(b => b.key === bkName);
+                        if (bk) {
+                            bestBookmaker = bk;
+                            oddsInfo.bookmaker = bk.title;
+                            
+                            const h2h = bk.markets?.find(m => m.key === 'h2h');
+                            if (h2h) {
+                                const home = h2h.outcomes?.find(o => o.name === event.home_team);
+                                const draw = h2h.outcomes?.find(o => o.name === 'Draw');
+                                const away = h2h.outcomes?.find(o => o.name === event.away_team);
+                                if (home) oddsInfo.homeWin = home.price;
+                                if (draw) oddsInfo.draw = draw.price;
+                                if (away) oddsInfo.awayWin = away.price;
+                            }
+
+                            const totals = bk.markets?.find(m => m.key === 'totals');
+                            if (totals) {
+                                const over = totals.outcomes?.find(o => o.name === 'Over' && o.point === 2.5);
+                                if (over) oddsInfo.over25 = over.price;
+                            }
+                            break; // Usa o primeiro bookmaker válido encontrado
                         }
                     }
-                    return null;
+
+                    return {
+                        id: event.id,
+                        league: event.sport_title,
+                        homeTeam: { name: event.home_team, shortName: event.home_team.substring(0, 3).toUpperCase() },
+                        awayTeam: { name: event.away_team, shortName: event.away_team.substring(0, 3).toUpperCase() },
+                        utcDate: event.commence_time,
+                        odds: oddsInfo
+                    };
+                }).filter(m => m.odds.homeWin !== null); // Filtrar apenas jogos que têm odds 1X2
+
+                // 3. Organizar por categorias (usando fuso horário de Lisboa)
+                function getLisbonDate(dateString) {
+                    return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
                 }
 
-                // 4. Adicionar odds a cada jogo
-                const matchesWithOdds = allMatches.map(match => ({ ...match, odds: findOdds(match) }));
-
-                // 5. Organizar por categorias
-                function getLisbonDate(date) {
-                    return new Date(date).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
-                }
-
-                const todayMatches = matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === getLisbonDate(now));
+                const now = new Date();
+                const todayStr = getLisbonDate(now);
                 
                 const tomorrow = new Date(now);
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowMatches = matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === getLisbonDate(tomorrow));
+                const tomorrowStr = getLisbonDate(tomorrow);
 
                 const dayOfWeek = now.getDay();
                 let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
                 const saturday = new Date(now);
                 saturday.setDate(saturday.getDate() + daysUntilSaturday);
+                const saturdayStr = getLisbonDate(saturday);
+                
                 const sunday = new Date(saturday);
                 sunday.setDate(sunday.getDate() + 1);
-
-                const weekendMatches = matchesWithOdds.filter(m => {
-                    const matchDate = getLisbonDate(m.utcDate);
-                    return matchDate === getLisbonDate(saturday) || matchDate === getLisbonDate(sunday);
-                });
+                const sundayStr = getLisbonDate(sunday);
 
                 let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
                 const friday = new Date(now);
                 friday.setDate(friday.getDate() + daysUntilFriday);
+                const fridayStr = getLisbonDate(friday);
 
-                const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC'];
-                const weekendDaysMatches = matchesWithOdds.filter(m => {
-                    const matchDate = getLisbonDate(m.utcDate);
-                    return matchDate === getLisbonDate(friday) || matchDate === getLisbonDate(saturday) || matchDate === getLisbonDate(sunday);
+                const todayMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
+                const tomorrowMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
+                
+                const weekendMatches = processedMatches.filter(m => {
+                    const d = getLisbonDate(m.utcDate);
+                    return d === saturdayStr || d === sundayStr;
+                });
+
+                const topLeaguesKeywords = ['EPL', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Primeira Liga', 'Champions League'];
+                const weekendDaysMatches = processedMatches.filter(m => {
+                    const d = getLisbonDate(m.utcDate);
+                    return d === fridayStr || d === saturdayStr || d === sundayStr;
                 });
 
                 const bestBets = weekendDaysMatches
-                    .filter(m => m.odds !== null)
-                    .sort((a, b) => {
-                        const aIsTop = topLeagues.includes(a.competition.code) ? 0 : 1;
-                        const bIsTop = topLeagues.includes(b.competition.code) ? 0 : 1;
-                        if (aIsTop !== bIsTop) return aIsTop - bIsTop;
-                        return new Date(a.utcDate) - new Date(b.utcDate);
-                    })
+                    .filter(m => topLeaguesKeywords.some(kw => m.league.includes(kw)))
+                    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
                     .slice(0, 6);
 
-                allMatchesData = { today: todayMatches, tomorrow: tomorrowMatches, weekend: weekendMatches, bestBets: bestBets };
+                allMatchesData = { 
+                    today: todayMatches, 
+                    tomorrow: tomorrowMatches, 
+                    weekend: weekendMatches, 
+                    bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6) // Fallback se não houver ligas top
+                };
 
                 console.log('📊 Resumo: Hoje:', todayMatches.length, '| Amanhã:', tomorrowMatches.length, '| Fim de semana:', weekendMatches.length, '| Top 6:', bestBets.length);
 
@@ -252,7 +202,7 @@
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = "Falha ao carregar jogos";
-                document.getElementById('error-detail').innerText = error.message;
+                document.getElementById('error-detail').innerText = error.message + ". Verifica a tua chave API.";
             }
         }
 
@@ -284,7 +234,7 @@
                 document.getElementById('matches-container').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
-                document.getElementById('error-detail').innerText = "Não há jogos agendados para esta categoria.";
+                document.getElementById('error-detail').innerText = "Não há jogos com odds disponíveis para esta categoria no momento.";
                 return;
             }
 
@@ -309,7 +259,7 @@
                 const drawOdd = odds?.draw ? odds.draw.toFixed(2) : '-';
                 const awayOdd = odds?.awayWin ? odds.awayWin.toFixed(2) : '-';
                 const over25Odd = odds?.over25 ? odds.over25.toFixed(2) : '-';
-                const bookmakerName = odds?.bookmaker || 'Betclic';
+                const bookmakerName = odds?.bookmaker || 'Indisponível';
 
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
@@ -317,7 +267,7 @@
 
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.competition.name}</span>
+                            <span>${match.league}</span>
                             <span class="text-gray-600">•</span>
                             <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
                         </div>
@@ -325,14 +275,14 @@
                         <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
                                 <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                                    ${match.homeTeam.shortName}
                                 </div>
                                 <p class="font-bold text-sm">${match.homeTeam.name}</p>
                             </div>
                             <div class="text-gray-600 font-bold text-xl px-2">VS</div>
                             <div class="text-center flex-1">
                                 <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                                    ${match.awayTeam.shortName}
                                 </div>
                                 <p class="font-bold text-sm">${match.awayTeam.name}</p>
                             </div>
