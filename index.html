@@ -4,11 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Apostas Premium</title>
-    <!-- Tailwind CSS para o design -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Ícones -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Fonte -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -17,7 +14,6 @@
 </head>
 <body class="bg-slate-900 text-gray-100 min-h-screen flex flex-col">
 
-    <!-- Cabeçalho -->
     <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
         <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -39,26 +35,19 @@
         </div>
     </header>
 
-    <!-- Conteúdo Principal -->
     <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
-        
-        <!-- Estado de Carregamento -->
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
             <p class="text-gray-400">A carregar jogos reais de hoje...</p>
         </div>
-
-        <!-- Contentor dos Jogos -->
         <div id="matches-container" class="space-y-6 hidden"></div>
-
-        <!-- Mensagem de Erro -->
-        <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700">
-            <i class="fa-solid fa-triangle-exclamation text-4xl mb-3 text-amber-400"></i>
-            <p>Não foi possível carregar os jogos. Verifica a tua chave API.</p>
+        <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
+            <i class="fa-solid fa-triangle-exclamation text-4xl mb-3 text-red-400"></i>
+            <p id="error-text" class="font-bold text-lg mb-2">Não foi possível carregar os jogos.</p>
+            <p id="error-detail" class="text-sm text-gray-500"></p>
         </div>
     </main>
 
-    <!-- Rodapé -->
     <footer class="bg-slate-800 border-t border-slate-700 mt-8 py-6">
         <div class="max-w-3xl mx-auto px-4 text-center">
             <p class="text-gray-500 text-xs mb-2">
@@ -69,52 +58,60 @@
         </div>
     </footer>
 
-    <!-- Lógica do Site -->
     <script>
-        // ⚠️ PASSO IMPORTANTE: COLOCA A TUA CHAVE DA FOOTBALL-DATA.ORG AQUI EM BAIXO, ENTRE AS ASPAS
-        const API_KEY = '	56031cfaefbb448f836803d7b7d01c4b';
+        // ⚠️ COLOCA A TUA CHAVE AQUI. SEM ESPAÇOS ANTES OU DEPOIS!
+        const API_KEY = 'COLOCA_A_TUA_CHAVE_DA_FOOTBALL_DATA_AQUI';
         
         async function loadMatches() {
             try {
                 const today = new Date().toISOString().split('T')[0];
                 const dateTo = new Date();
-                dateTo.setDate(dateTo.getDate() + 3); // Procura jogos de hoje até daqui a 3 dias
+                dateTo.setDate(dateTo.getDate() + 3);
                 const toDate = dateTo.toISOString().split('T')[0];
                 
-                // URL da API com proxy para evitar bloqueios de CORS no navegador
                 const apiUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
+                // Proxy mais estável para evitar bloqueios do navegador
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
                 
                 const response = await fetch(proxyUrl, {
                     headers: { 'X-Auth-Token': API_KEY }
                 });
                 
-                if (!response.ok) throw new Error('Falha na API');
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
+                }
                 
                 const data = await response.json();
                 
-                // Filtrar apenas as grandes ligas e jogos futuros
                 const popularLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL'];
                 const matches = data.matches.filter(m => 
                     popularLeagues.includes(m.competition.code) && 
                     m.status === 'SCHEDULED'
-                ).slice(0, 5); // Mostra apenas os 5 próximos jogos
+                ).slice(0, 5);
                 
                 if (matches.length === 0) {
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('error-message').classList.remove('hidden');
-                    document.getElementById('error-message').innerHTML = `
-                        <i class="fa-solid fa-calendar-xmark text-4xl mb-3 text-gray-500"></i>
-                        <p>Não há jogos das principais ligas agendados para os próximos dias.</p>
-                    `;
+                    document.getElementById('error-text').innerText = "Sem jogos agendados";
+                    document.getElementById('error-detail').innerText = "Não há jogos das principais ligas para os próximos 3 dias.";
                     return;
                 }
                 
                 displayMatches(matches);
             } catch (error) {
-                console.error('Erro:', error);
+                console.error('Erro detalhado:', error);
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('error-text').innerText = "Falha na ligação à API";
+                
+                // Mostra o erro exato para nos ajudar a diagnosticar
+                if (error.message.includes('401')) {
+                    document.getElementById('error-detail').innerText = "A tua chave API é inválida ou expirou. Verifica-a no site football-data.org";
+                } else if (error.message.includes('429')) {
+                    document.getElementById('error-detail').innerText = "Limite de pedidos excedido. Tenta novamente daqui a 10 minutos.";
+                } else {
+                    document.getElementById('error-detail').innerText = error.message;
+                }
             }
         }
         
@@ -134,53 +131,3 @@
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
                             <span>${match.competition.name}</span>
-                            <span class="text-gray-600">•</span>
-                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
-                        </div>
-                        
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
-                                </div>
-                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
-                            </div>
-                            <div class="text-gray-600 font-bold text-xl px-2">VS</div>
-                            <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
-                                </div>
-                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
-                            </div>
-                        </div>
-                        
-                        <div class="bg-slate-900/50 rounded-xl p-3 mb-4 border border-slate-700">
-                            <p class="text-xs text-gray-400 font-semibold mb-1"><i class="fa-solid fa-chart-line mr-1"></i> ANÁLISE:</p>
-                            <p class="text-sm text-gray-300 leading-relaxed">
-                                Jogo da ${match.competition.name} com grande equilíbrio esperado. Ambas as equipas têm mostrado consistência nas últimas jornadas.
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
-                            <div>
-                                <p class="text-xs text-emerald-400 font-bold uppercase tracking-wider">Sugestão</p>
-                                <p class="text-white font-bold text-lg">Mais de 1.5 Golos</p>
-                            </div>
-                            <div class="bg-emerald-500 text-slate-900 font-extrabold text-xl px-4 py-2 rounded-lg">
-                                @1.45
-                            </div>
-                        </div>
-                    </div>
-                `;
-                container.innerHTML += card;
-            });
-            
-            document.getElementById('loading').classList.add('hidden');
-            container.classList.remove('hidden');
-        }
-        
-        // Iniciar o carregamento
-        loadMatches();
-    </script>
-</body>
-</html>
