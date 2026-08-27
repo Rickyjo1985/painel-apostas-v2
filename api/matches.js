@@ -2,9 +2,15 @@ export default async function handler(req, res) {
   const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
   
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const dateTo = new Date();
-    dateTo.setDate(dateTo.getDate() + 3);
+    // Calcular data de hoje (fuso horário de Lisboa)
+    const now = new Date();
+    const lisbonOffset = 0; // UTC+0 em inverno, UTC+1 em verão
+    const localDate = new Date(now.getTime() + (lisbonOffset * 60 * 60 * 1000));
+    const today = localDate.toISOString().split('T')[0];
+    
+    // Procurar jogos de hoje até 7 dias (para garantir que há jogos)
+    const dateTo = new Date(localDate);
+    dateTo.setDate(dateTo.getDate() + 7);
     const toDate = dateTo.toISOString().split('T')[0];
     
     const response = await fetch(`https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`, {
@@ -17,11 +23,10 @@ export default async function handler(req, res) {
     
     const data = await response.json();
     
-    const popularLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL'];
+    // Filtrar apenas jogos futuros ou de hoje (sem filtro de liga)
     const matches = data.matches.filter(m => 
-      popularLeagues.includes(m.competition.code) && 
-      m.status === 'SCHEDULED'
-    ).slice(0, 5);
+      m.status === 'SCHEDULED' || m.status === 'TIMED'
+    ).slice(0, 10); // Mostrar até 10 jogos
     
     res.status(200).json(matches);
   } catch (error) {
