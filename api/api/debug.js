@@ -1,4 +1,4 @@
-const ODDS_API_KEY = 'COLOCA_A_TUA_CHAVE_DA_THE_ODDS_API_AQUI';
+const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
 
 export default async function handler(req, res) {
   try {
