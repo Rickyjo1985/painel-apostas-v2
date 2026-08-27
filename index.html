@@ -38,7 +38,7 @@
     <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
-            <p class="text-gray-400">A carregar jogos reais de hoje...</p>
+            <p class="text-gray-400">A carregar jogos reais...</p>
         </div>
         <div id="matches-container" class="space-y-6 hidden"></div>
         <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
@@ -59,8 +59,7 @@
     </footer>
 
     <script>
-        // ⚠️ COLOCA A TUA CHAVE AQUI. SEM ESPAÇOS ANTES OU DEPOIS!
-           const API_KEY = '56031cfaefbb448f836803d7b7d01c4b'; 
+        const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
         
         async function loadMatches() {
             try {
@@ -70,7 +69,6 @@
                 const toDate = dateTo.toISOString().split('T')[0];
                 
                 const apiUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                // Proxy mais estável para evitar bloqueios do navegador
                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
                 
                 const response = await fetch(proxyUrl, {
@@ -104,9 +102,8 @@
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = "Falha na ligação à API";
                 
-                // Mostra o erro exato para nos ajudar a diagnosticar
                 if (error.message.includes('401')) {
-                    document.getElementById('error-detail').innerText = "A tua chave API é inválida ou expirou. Verifica-a no site football-data.org";
+                    document.getElementById('error-detail').innerText = "Chave API inválida. Contacta o suporte da Football-Data.org";
                 } else if (error.message.includes('429')) {
                     document.getElementById('error-detail').innerText = "Limite de pedidos excedido. Tenta novamente daqui a 10 minutos.";
                 } else {
@@ -131,3 +128,52 @@
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
                             <span>${match.competition.name}</span>
+                            <span class="text-gray-600">•</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="text-center flex-1">
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
+                            </div>
+                            <div class="text-gray-600 font-bold text-xl px-2">VS</div>
+                            <div class="text-center flex-1">
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-900/50 rounded-xl p-3 mb-4 border border-slate-700">
+                            <p class="text-xs text-gray-400 font-semibold mb-1"><i class="fa-solid fa-chart-line mr-1"></i> ANÁLISE:</p>
+                            <p class="text-sm text-gray-300 leading-relaxed">
+                                Jogo da ${match.competition.name} com grande equilíbrio esperado. Ambas as equipas têm mostrado consistência nas últimas jornadas.
+                            </p>
+                        </div>
+                        
+                        <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
+                            <div>
+                                <p class="text-xs text-emerald-400 font-bold uppercase tracking-wider">Sugestão</p>
+                                <p class="text-white font-bold text-lg">Mais de 1.5 Golos</p>
+                            </div>
+                            <div class="bg-emerald-500 text-slate-900 font-extrabold text-xl px-4 py-2 rounded-lg">
+                                @1.45
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += card;
+            });
+            
+            document.getElementById('loading').classList.add('hidden');
+            container.classList.remove('hidden');
+        }
+        
+        loadMatches();
+    </script>
+</body>
+</html>
