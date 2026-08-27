@@ -59,33 +59,17 @@
     </footer>
 
     <script>
-        const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
-        
         async function loadMatches() {
             try {
-                const today = new Date().toISOString().split('T')[0];
-                const dateTo = new Date();
-                dateTo.setDate(dateTo.getDate() + 3);
-                const toDate = dateTo.toISOString().split('T')[0];
-                
-                const apiUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
-                
-                const response = await fetch(proxyUrl, {
-                    headers: { 'X-Auth-Token': API_KEY }
-                });
+                // Agora chamamos a nossa própria função na Vercel
+                const response = await fetch('/api/matches');
                 
                 if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Erro HTTP: ${response.status}`);
                 }
                 
-                const data = await response.json();
-                
-                const popularLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL'];
-                const matches = data.matches.filter(m => 
-                    popularLeagues.includes(m.competition.code) && 
-                    m.status === 'SCHEDULED'
-                ).slice(0, 5);
+                const matches = await response.json();
                 
                 if (matches.length === 0) {
                     document.getElementById('loading').classList.add('hidden');
@@ -97,18 +81,11 @@
                 
                 displayMatches(matches);
             } catch (error) {
-                console.error('Erro detalhado:', error);
+                console.error('Erro:', error);
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
-                document.getElementById('error-text').innerText = "Falha na ligação à API";
-                
-                if (error.message.includes('401')) {
-                    document.getElementById('error-detail').innerText = "Chave API inválida. Contacta o suporte da Football-Data.org";
-                } else if (error.message.includes('429')) {
-                    document.getElementById('error-detail').innerText = "Limite de pedidos excedido. Tenta novamente daqui a 10 minutos.";
-                } else {
-                    document.getElementById('error-detail').innerText = error.message;
-                }
+                document.getElementById('error-text').innerText = "Falha ao carregar jogos";
+                document.getElementById('error-detail').innerText = error.message;
             }
         }
         
