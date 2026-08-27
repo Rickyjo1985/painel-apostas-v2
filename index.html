@@ -61,7 +61,6 @@
     <script>
         async function loadMatches() {
             try {
-                // Agora chamamos a nossa própria função na Vercel
                 const response = await fetch('/api/matches');
                 
                 if (!response.ok) {
@@ -71,11 +70,11 @@
                 
                 const matches = await response.json();
                 
-                if (matches.length === 0) {
+                if (!matches || matches.length === 0) {
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('error-message').classList.remove('hidden');
-                    document.getElementById('error-text').innerText = "Sem jogos agendados";
-                    document.getElementById('error-detail').innerText = "Não há jogos das principais ligas para os próximos 3 dias.";
+                    document.getElementById('error-text').innerText = "Sem jogos disponíveis";
+                    document.getElementById('error-detail').innerText = "A API não devolveu nenhum jogo. Tenta novamente mais tarde.";
                     return;
                 }
                 
@@ -93,7 +92,10 @@
             const container = document.getElementById('matches-container');
             container.innerHTML = '';
             
-            matches.forEach((match, index) => {
+            // Mostrar até 10 jogos
+            const matchesToShow = matches.slice(0, 10);
+            
+            matchesToShow.forEach((match, index) => {
                 const date = new Date(match.utcDate);
                 const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
                 const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
