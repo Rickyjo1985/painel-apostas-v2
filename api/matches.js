@@ -2,32 +2,52 @@ export default async function handler(req, res) {
   const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
   
   try {
-    // Calcular datas (fuso horário de Lisboa)
+    // Função para obter a data no fuso horário de Lisboa
+    function getLisbonDate(date = new Date()) {
+      const lisbonTime = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }));
+      return lisbonTime.toISOString().split('T')[0];
+    }
+    
+    // Função para adicionar dias a uma data
+    function addDays(date, days) {
+      const result = new Date(date);
+      result.setDate(result.getDate() + days);
+      return result;
+    }
+    
+    // Data atual em Lisboa
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const today = getLisbonDate(now);
     
     // Amanhã
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowDate = tomorrow.toISOString().split('T')[0];
+    const tomorrow = getLisbonDate(addDays(now, 1));
     
-    // Fim de semana (próximo sábado e domingo)
+    // Calcular próximo sábado e domingo
     const dayOfWeek = now.getDay(); // 0 = domingo, 6 = sábado
-    const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
-    const saturday = new Date(now);
-    saturday.setDate(saturday.getDate() + daysUntilSaturday);
-    const saturdayDate = saturday.toISOString().split('T')[0];
     
-    const sunday = new Date(saturday);
-    sunday.setDate(sunday.getDate() + 1);
-    const sundayDate = sunday.toISOString().split('T')[0];
+    let daysUntilSaturday, daysUntilSunday;
     
-    // Buscar jogos dos próximos 10 dias (para cobrir tudo)
-    const dateTo = new Date(now);
-    dateTo.setDate(dateTo.getDate() + 10);
-    const toDate = dateTo.toISOString().split('T')[0];
+    if (dayOfWeek === 6) {
+      // Hoje é sábado
+      daysUntilSaturday = 0;
+      daysUntilSunday = 1;
+    } else if (dayOfWeek === 0) {
+      // Hoje é domingo
+      daysUntilSaturday = 6;
+      daysUntilSunday = 0;
+    } else {
+      // Dia de semana (segunda a sexta)
+      daysUntilSaturday = 6 - dayOfWeek;
+      daysUntilSunday = 7 - dayOfWeek;
+    }
     
-    const response = await fetch(`https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`, {
+    const saturday = getLisbonDate(addDays(now, daysUntilSaturday));
+    const sunday = getLisbonDate(addDays(now, daysUntilSunday));
+    
+    // Buscar jogos dos próximos 10 dias
+    const dateTo = getLisbonDate(addDays(now, 10));
+    
+    const response = await fetch(`https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${dateTo}`, {
       headers: { 'X-Auth-Token': API_KEY }
     });
     
@@ -42,14 +62,21 @@ export default async function handler(req, res) {
       m.status === 'SCHEDULED' || m.status === 'TIMED'
     );
     
-    // Organizar por categorias
-    const todayMatches = allMatches.filter(m => m.utcDate.startsWith(today));
-    const tomorrowMatches = allMatches.filter(m => m.utcDate.startsWith(tomorrowDate));
-    const weekendMatches = allMatches.filter(m => 
-      m.utcDate.startsWith(saturdayDate) || m.utcDate.startsWith(sundayDate)
-    );
+    // Função para converter UTC para data de Lisboa
+    function getMatchLisbonDate(utcDate) {
+      const date = new Date(utcDate);
+      return getLisbonDate(date);
+    }
     
-    // Melhores 6 apostas (ligas principais, ordenadas por importância)
+    // Organizar por categorias (usando datas de Lisboa)
+    const todayMatches = allMatches.filter(m => getMatchLisbonDate(m.utcDate) === today);
+    const tomorrowMatches = allMatches.filter(m => getMatchLisbonDate(m.utcDate) === tomorrow);
+    const weekendMatches = allMatches.filter(m => {
+      const matchDate = getMatchLisbonDate(m.utcDate);
+      return matchDate === saturday || matchDate === sunday;
+    });
+    
+    // Melhores 6 apostas (ligas principais)
     const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC'];
     const bestBets = allMatches
       .filter(m => topLeagues.includes(m.competition.code))
@@ -59,7 +86,14 @@ export default async function handler(req, res) {
       today: todayMatches,
       tomorrow: tomorrowMatches,
       weekend: weekendMatches,
-      bestBets: bestBets
+      bestBets: bestBets,
+      debug: {
+        today,
+        tomorrow,
+        saturday,
+        sunday,
+        dayOfWeek
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
