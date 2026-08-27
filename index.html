@@ -84,12 +84,16 @@
 
         async function loadMatches() {
             try {
+                console.log('🔍 A iniciar carregamento...');
+
                 // 1. Buscar jogos da Football-Data.org
                 const now = new Date();
                 const today = now.toISOString().split('T')[0];
                 const dateTo = new Date(now);
                 dateTo.setDate(dateTo.getDate() + 10);
                 const toDate = dateTo.toISOString().split('T')[0];
+
+                console.log('📅 A buscar jogos de', today, 'até', toDate);
 
                 const matchesResponse = await fetch(
                     `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`,
@@ -103,15 +107,26 @@
                     m.status === 'SCHEDULED' || m.status === 'TIMED'
                 );
 
-                // 2. Buscar odds da The Odds API
+                console.log('✅ Encontrados', allMatches.length, 'jogos');
+
+                // 2. Buscar odds da The Odds API (usando proxy CORS)
                 let oddsMap = {};
                 try {
-                    const oddsResponse = await fetch(
-                        `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=betclic,bet365,unibet`
-                    );
+                    const oddsUrl = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=betclic,bet365,unibet`;
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(oddsUrl)}`;
+                    
+                    console.log('🎰 A buscar odds...');
+                    const oddsResponse = await fetch(proxyUrl);
 
                     if (oddsResponse.ok) {
                         const oddsData = await oddsResponse.json();
+                        console.log('✅ Encontradas odds para', oddsData.length, 'jogos');
+                        
+                        // DEBUG: Mostrar primeiros 3 jogos da The Odds API
+                        console.log('📋 Exemplo de nomes na The Odds API:');
+                        oddsData.slice(0, 3).forEach(event => {
+                            console.log(`  - ${event.home_team} vs ${event.away_team}`);
+                        });
 
                         oddsData.forEach(event => {
                             const homeTeam = event.home_team.toLowerCase();
@@ -156,29 +171,39 @@
 
                             oddsMap[key] = oddsInfo;
                         });
+                    } else {
+                        console.error('❌ Erro ao buscar odds:', oddsResponse.status);
                     }
                 } catch (oddsError) {
-                    console.error('Erro ao buscar odds:', oddsError);
+                    console.error('❌ Erro ao buscar odds:', oddsError);
                 }
 
-                // 3. Função para encontrar odds de um jogo
+                // 3. Função para encontrar odds de um jogo (matching inteligente)
                 function findOdds(match) {
                     const home = match.homeTeam.name.toLowerCase();
                     const away = match.awayTeam.name.toLowerCase();
 
+                    // Tentar match exato
                     const exactKey = `${home}|${away}`;
                     if (oddsMap[exactKey]) return oddsMap[exactKey];
 
+                    // Tentar match parcial (nomes curtos ou abreviados)
                     for (const [key, odds] of Object.entries(oddsMap)) {
                         const [oddsHome, oddsAway] = key.split('|');
-                        if (
-                            (home.includes(oddsHome) || oddsHome.includes(home)) &&
-                            (away.includes(oddsAway) || oddsAway.includes(away))
-                        ) {
+                        
+                        // Verificar se os nomes são semelhantes
+                        const homeMatch = home.includes(oddsHome) || oddsHome.includes(home) || 
+                                         home.split(' ')[0] === oddsHome.split(' ')[0];
+                        const awayMatch = away.includes(oddsAway) || oddsAway.includes(away) || 
+                                         away.split(' ')[0] === oddsAway.split(' ')[0];
+                        
+                        if (homeMatch && awayMatch) {
+                            console.log(`✅ Match encontrado: ${match.homeTeam.name} vs ${match.awayTeam.name}`);
                             return odds;
                         }
                     }
 
+                    console.log(`❌ Sem odds para: ${match.homeTeam.name} vs ${match.awayTeam.name}`);
                     return null;
                 }
 
@@ -238,9 +263,15 @@
                     bestBets: bestBets
                 };
 
+                console.log('📊 Resumo:');
+                console.log('  - Hoje:', todayMatches.length, 'jogos');
+                console.log('  - Amanhã:', tomorrowMatches.length, 'jogos');
+                console.log('  - Fim de semana:', weekendMatches.length, 'jogos');
+                console.log('  - Top 6:', bestBets.length, 'jogos com odds');
+
                 displayCurrentTab();
             } catch (error) {
-                console.error('Erro:', error);
+                console.error('❌ Erro geral:', error);
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = "Falha ao carregar jogos";
