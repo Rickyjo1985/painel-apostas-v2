@@ -13,6 +13,8 @@
         .tab-active { border-bottom: 3px solid #fbbf24; color: #fbbf24; font-weight: 700; }
         .tab-inactive { color: #94a3b8; }
         .tab-inactive:hover { color: #e2e8f0; }
+        .odd-btn { transition: all 0.2s; }
+        .odd-btn:hover { transform: scale(1.05); background-color: #059669; }
     </style>
 </head>
 <body class="bg-slate-900 text-gray-100 min-h-screen flex flex-col">
@@ -25,7 +27,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-extrabold tracking-tight text-white">PAINEL <span class="text-amber-400">PREMIUM</span></h1>
-                    <p class="text-xs text-gray-400">Jogos Reais Atualizados Automaticamente</p>
+                    <p class="text-xs text-gray-400">Odds Reais Atualizadas Automaticamente</p>
                 </div>
             </div>
             <div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20 flex items-center">
@@ -38,21 +40,21 @@
         </div>
     </header>
 
-    <!-- Navegação por Abas -->
     <nav class="bg-slate-800/50 border-b border-slate-700 backdrop-blur-sm sticky top-[73px] z-40">
         <div class="max-w-3xl mx-auto px-4">
             <div class="flex overflow-x-auto gap-6 no-scrollbar">
                 <button onclick="switchTab('today')" class="tab-active py-4 px-1 text-sm whitespace-nowrap transition-colors" id="tab-today">Hoje</button>
                 <button onclick="switchTab('tomorrow')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap transition-colors" id="tab-tomorrow">Amanhã</button>
                 <button onclick="switchTab('weekend')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap transition-colors" id="tab-weekend">Fim de Semana</button>
-                <button onclick="switchTab('bestBets')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap transition-colors" id="tab-bestBets">⭐ Top 6 (Sex-Sáb-Dom)</button>            </div>
+                <button onclick="switchTab('bestBets')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap transition-colors" id="tab-bestBets">⭐ Top 6 (Sex-Sáb-Dom)</button>
+            </div>
         </div>
     </nav>
 
     <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
-            <p class="text-gray-400">A carregar jogos reais...</p>
+            <p class="text-gray-400">A carregar jogos e odds reais...</p>
         </div>
         <div id="matches-container" class="space-y-6 hidden"></div>
         <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
@@ -68,23 +70,21 @@
                 <i class="fa-solid fa-triangle-exclamation mr-1"></i>
                 Jogue com responsabilidade. Proibido para menores de 18 anos.
             </p>
-            <p class="text-gray-600 text-xs">© 2026 Painel Apostas Premium.</p>
+            <p class="text-gray-600 text-xs">Odds fornecidas por Betclic e parceiros. © 2026 Painel Apostas Premium.</p>
         </div>
     </footer>
 
     <script>
         let allMatchesData = null;
         let currentTab = 'today';
-        
+
         async function loadMatches() {
             try {
                 const response = await fetch('/api/matches');
-                
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.error || `Erro HTTP: ${response.status}`);
                 }
-                
                 allMatchesData = await response.json();
                 displayCurrentTab();
             } catch (error) {
@@ -95,85 +95,75 @@
                 document.getElementById('error-detail').innerText = error.message;
             }
         }
-        
+
         function switchTab(tabName) {
             currentTab = tabName;
-            
-            // Atualizar estilos das abas
             document.querySelectorAll('nav button').forEach(btn => {
                 btn.classList.remove('tab-active');
                 btn.classList.add('tab-inactive');
             });
             document.getElementById('tab-' + tabName).classList.remove('tab-inactive');
             document.getElementById('tab-' + tabName).classList.add('tab-active');
-            
             displayCurrentTab();
         }
-        
+
         function displayCurrentTab() {
             if (!allMatchesData) return;
-            
             let matches = [];
             let tabTitle = '';
-            
+
             switch(currentTab) {
-                case 'today':
-                    matches = allMatchesData.today || [];
-                    tabTitle = 'Hoje';
-                    break;
-                case 'tomorrow':
-                    matches = allMatchesData.tomorrow || [];
-                    tabTitle = 'Amanhã';
-                    break;
-                case 'weekend':
-                    matches = allMatchesData.weekend || [];
-                    tabTitle = 'Fim de Semana';
-                    break;
-                case 'bestBets':
-                    matches = allMatchesData.bestBets || [];
-                    tabTitle = 'Melhores 6 Apostas';
-                    break;
+                case 'today': matches = allMatchesData.today || []; tabTitle = 'Hoje'; break;
+                case 'tomorrow': matches = allMatchesData.tomorrow || []; tabTitle = 'Amanhã'; break;
+                case 'weekend': matches = allMatchesData.weekend || []; tabTitle = 'Fim de Semana'; break;
+                case 'bestBets': matches = allMatchesData.bestBets || []; tabTitle = 'Top 6'; break;
             }
-            
+
             if (matches.length === 0) {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('matches-container').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
-                document.getElementById('error-detail').innerText = `Não há jogos agendados para esta categoria no momento.`;
+                document.getElementById('error-detail').innerText = "Não há jogos agendados para esta categoria.";
                 return;
             }
-            
+
             document.getElementById('error-message').classList.add('hidden');
             displayMatches(matches, currentTab === 'bestBets');
         }
-        
+
         function displayMatches(matches, isBestBets = false) {
             const container = document.getElementById('matches-container');
             container.innerHTML = '';
-            
             const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
-            
+
             matchesToShow.forEach((match, index) => {
                 const date = new Date(match.utcDate);
                 const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
                 const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                
-                const isGold = (isBestBets && index < 6) || (!isBestBets && index === 0);
+                const isGold = isBestBets || index === 0;
                 const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
-                
+
+                // Odds reais ou placeholder
+                const odds = match.odds;
+                const homeOdd = odds?.homeWin ? odds.homeWin.toFixed(2) : '-';
+                const drawOdd = odds?.draw ? odds.draw.toFixed(2) : '-';
+                const awayOdd = odds?.awayWin ? odds.awayWin.toFixed(2) : '-';
+                const over25Odd = odds?.over25 ? odds.over25.toFixed(2) : '-';
+                const bookmakerName = odds?.bookmaker || 'Betclic';
+
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
                         ${isGold ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
-                        
+
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
                             <span>${match.competition.name}</span>
                             <span class="text-gray-600">•</span>
                             <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
                         </div>
-                        
-                        <div class="flex items-center justify-between mb-6">
+
+                        <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
                                 <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
                                     ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
@@ -188,32 +178,51 @@
                                 <p class="font-bold text-sm">${match.awayTeam.name}</p>
                             </div>
                         </div>
-                        
-                        <div class="bg-slate-900/50 rounded-xl p-3 mb-4 border border-slate-700">
-                            <p class="text-xs text-gray-400 font-semibold mb-1"><i class="fa-solid fa-chart-line mr-1"></i> ANÁLISE:</p>
-                            <p class="text-sm text-gray-300 leading-relaxed">
-                                Jogo da ${match.competition.name} com grande equilíbrio esperado. Ambas as equipas têm mostrado consistência nas últimas jornadas.
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
-                            <div>
-                                <p class="text-xs text-emerald-400 font-bold uppercase tracking-wider">Sugestão</p>
-                                <p class="text-white font-bold text-lg">Mais de 1.5 Golos</p>
+
+                        <!-- ODDS REAIS -->
+                        <div class="bg-slate-900/80 rounded-xl p-4 mb-4 border border-slate-600">
+                            <div class="flex items-center justify-between mb-3">
+                                <p class="text-xs text-amber-400 font-bold uppercase tracking-wider">
+                                    <i class="fa-solid fa-chart-bar mr-1"></i> Odds Reais
+                                </p>
+                                <span class="text-xs text-gray-500 bg-slate-700 px-2 py-0.5 rounded-full">${bookmakerName}</span>
                             </div>
-                            <div class="bg-emerald-500 text-slate-900 font-extrabold text-xl px-4 py-2 rounded-lg">
-                                @1.45
+
+                            <!-- Odds 1X2 -->
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Casa</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${homeOdd}</p>
+                                </button>
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Empate</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${drawOdd}</p>
+                                </button>
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Fora</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${awayOdd}</p>
+                                </button>
+                            </div>
+
+                            <!-- Odd Over 2.5 -->
+                            <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                                <div>
+                                    <p class="text-xs text-emerald-400 font-bold">Mais de 2.5 Golos</p>
+                                </div>
+                                <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">
+                                    ${over25Odd}
+                                </button>
                             </div>
                         </div>
                     </div>
                 `;
                 container.innerHTML += card;
             });
-            
+
             document.getElementById('loading').classList.add('hidden');
             container.classList.remove('hidden');
         }
-        
+
         loadMatches();
     </script>
 </body>
