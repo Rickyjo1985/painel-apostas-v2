@@ -27,7 +27,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-extrabold tracking-tight text-white">PAINEL <span class="text-amber-400">PREMIUM</span></h1>
-                    <p class="text-xs text-gray-400" id="status-text">Odds Reais Atualizadas</p>
+                    <p class="text-xs text-gray-400" id="status-text">Jogos Reais Atualizados</p>
                 </div>
             </div>
             <div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20 flex items-center">
@@ -54,7 +54,7 @@
     <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
-            <p class="text-gray-400">A carregar jogos e odds reais...</p>
+            <p class="text-gray-400">A carregar jogos reais...</p>
         </div>
         <div id="matches-container" class="space-y-6 hidden"></div>
         <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
@@ -78,32 +78,105 @@
         let allMatchesData = null;
         let currentTab = 'today';
 
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        async function fetchMatchesForDate(dateStr) {
+            try {
+                const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=Soccer`;
+                const response = await fetch(url);
+                if (!response.ok) return [];
+                const data = await response.json();
+                return data.events || [];
+            } catch (e) {
+                console.error('Erro ao buscar jogos para', dateStr, e);
+                return [];
+            }
+        }
+
         async function loadMatches() {
             try {
-                console.log('🔍 A carregar odds reais via Serverless Function...');
-                
-                // Agora chamamos a NOSSA função no Vercel, sem proxies!
-                const response = await fetch('/api/odds');
+                console.log('🔍 A carregar jogos reais do TheSportsDB...');
 
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || `Erro: ${response.status}`);
+                const now = new Date();
+                const todayStr = formatDate(now);
+                
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = formatDate(tomorrow);
+
+                const dayOfWeek = now.getDay();
+                
+                // Calcular sexta, sábado e domingo
+                let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+                let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
+                
+                // Se hoje for sexta, sábado ou domingo, usar estes dias
+                if (dayOfWeek === 5) { daysUntilFriday = 0; daysUntilSaturday = 1; }
+                if (dayOfWeek === 6) { daysUntilFriday = 6; daysUntilSaturday = 0; }
+                if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
+                
+                const friday = new Date(now);
+                friday.setDate(friday.getDate() + daysUntilFriday);
+                const fridayStr = formatDate(friday);
+                
+                const saturday = new Date(now);
+                saturday.setDate(saturday.getDate() + daysUntilSaturday);
+                const saturdayStr = formatDate(saturday);
+                
+                const sunday = new Date(saturday);
+                sunday.setDate(sunday.getDate() + 1);
+                const sundayStr = formatDate(sunday);
+
+                // Buscar jogos para cada dia
+                const [todayMatches, tomorrowMatches, fridayMatches, saturdayMatches, sundayMatches] = await Promise.all([
+                    fetchMatchesForDate(todayStr),
+                    fetchMatchesForDate(tomorrowStr),
+                    fetchMatchesForDate(fridayStr),
+                    fetchMatchesForDate(saturdayStr),
+                    fetchMatchesForDate(sundayStr)
+                ]);
+
+                // Filtrar apenas ligas principais (palavras-chave)
+                const topLeaguesKeywords = ['Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Primeira Liga', 'Champions League', 'Europa League', 'Liga Portugal', 'Eredivisie', 'MLS'];
+                
+                function filterTopLeagues(matches) {
+                    return matches.filter(m => 
+                        topLeaguesKeywords.some(kw => m.strLeague && m.strLeague.toLowerCase().includes(kw.toLowerCase()))
+                    );
                 }
 
-                const rawData = await response.json();
-                console.log('✅ Odds reais carregadas:', rawData.length, 'eventos');
+                const allWeekendMatches = [...fridayMatches, ...saturdayMatches, ...sundayMatches];
+                const weekendMatches = filterTopLeagues([...saturdayMatches, ...sundayMatches]);
+                const bestBets = filterTopLeagues(allWeekendMatches).slice(0, 6);
+
+                // Ordenar por hora
+                function sortByTime(matches) {
+                    return matches.sort((a, b) => (a.strTime || '').localeCompare(b.strTime || ''));
+                }
+
+                allMatchesData = {
+                    today: sortByTime(todayMatches),
+                    tomorrow: sortByTime(tomorrowMatches),
+                    weekend: sortByTime(weekendMatches.length > 0 ? weekendMatches : allWeekendMatches),
+                    bestBets: bestBets.length > 0 ? bestBets : sortByTime(allWeekendMatches).slice(0, 6)
+                };
+
+                const total = todayMatches.length + tomorrowMatches.length + allWeekendMatches.length;
+                console.log('✅ Total de jogos carregados:', total);
                 
-                if (rawData.length === 0) {
-                    showError('Sem jogos disponíveis', 'Não há jogos com odds disponíveis no momento.');
+                if (total === 0) {
+                    showError('Sem jogos disponíveis', 'Não há jogos de futebol agendados para os próximos dias.');
                     return;
                 }
 
-                document.getElementById('status-text').innerText = 'Odds Reais Atualizadas Automaticamente';
-                processApiData(rawData);
+                document.getElementById('status-text').innerText = 'Jogos Reais Atualizados Automaticamente';
+                displayCurrentTab();
 
             } catch (error) {
                 console.error('❌ Erro:', error);
-                showError('Erro ao carregar', 'Verifica a tua chave API no ficheiro api/odds.js ou tenta novamente mais tarde. (' + error.message + ')');
+                showError('Erro ao carregar', 'Não foi possível obter os dados. Tenta novamente mais tarde.');
             }
         }
 
@@ -113,91 +186,6 @@
             document.getElementById('error-message').classList.remove('hidden');
             document.getElementById('error-text').innerText = title;
             document.getElementById('error-detail').innerText = detail;
-        }
-
-        function processApiData(rawData) {
-            const processedMatches = rawData.map(event => {
-                const preferredBookmakers = ['betclic', 'bet365', 'unibet'];
-                let oddsInfo = { homeWin: null, draw: null, awayWin: null, over25: null, bookmaker: 'Indisponível' };
-
-                for (const bkName of preferredBookmakers) {
-                    const bk = event.bookmakers?.find(b => b.key === bkName);
-                    if (bk) {
-                        oddsInfo.bookmaker = bk.title;
-                        const h2h = bk.markets?.find(m => m.key === 'h2h');
-                        if (h2h) {
-                            const home = h2h.outcomes?.find(o => o.name === event.home_team);
-                            const draw = h2h.outcomes?.find(o => o.name === 'Draw');
-                            const away = h2h.outcomes?.find(o => o.name === event.away_team);
-                            if (home) oddsInfo.homeWin = home.price;
-                            if (draw) oddsInfo.draw = draw.price;
-                            if (away) oddsInfo.awayWin = away.price;
-                        }
-                        const totals = bk.markets?.find(m => m.key === 'totals');
-                        if (totals) {
-                            const over = totals.outcomes?.find(o => o.name === 'Over' && o.point === 2.5);
-                            if (over) oddsInfo.over25 = over.price;
-                        }
-                        break;
-                    }
-                }
-
-                return {
-                    id: event.id,
-                    league: event.sport_title,
-                    homeTeam: { name: event.home_team, shortName: event.home_team.substring(0, 3).toUpperCase() },
-                    awayTeam: { name: event.away_team, shortName: event.away_team.substring(0, 3).toUpperCase() },
-                    utcDate: event.commence_time,
-                    odds: oddsInfo
-                };
-            }).filter(m => m.odds.homeWin !== null);
-
-            function getLisbonDate(dateString) {
-                return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
-            }
-
-            const now = new Date();
-            const todayStr = getLisbonDate(now);
-            const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr = getLisbonDate(tomorrow);
-
-            const dayOfWeek = now.getDay();
-            const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
-            const saturday = new Date(now); saturday.setDate(saturday.getDate() + daysUntilSaturday);
-            const saturdayStr = getLisbonDate(saturday);
-            const sunday = new Date(saturday); sunday.setDate(sunday.getDate() + 1);
-            const sundayStr = getLisbonDate(sunday);
-            const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
-            const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
-            const fridayStr = getLisbonDate(friday);
-
-            const todayMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
-            const tomorrowMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
-            const weekendMatches = processedMatches.filter(m => {
-                const d = getLisbonDate(m.utcDate);
-                return d === saturdayStr || d === sundayStr;
-            });
-
-            const topLeaguesKeywords = ['EPL', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Primeira Liga', 'Champions League'];
-            const weekendDaysMatches = processedMatches.filter(m => {
-                const d = getLisbonDate(m.utcDate);
-                return d === fridayStr || d === saturdayStr || d === sundayStr;
-            });
-
-            const bestBets = weekendDaysMatches
-                .filter(m => topLeaguesKeywords.some(kw => m.league.includes(kw)))
-                .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
-                .slice(0, 6);
-
-            allMatchesData = { 
-                today: todayMatches, 
-                tomorrow: tomorrowMatches, 
-                weekend: weekendMatches, 
-                bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6)
-            };
-
-            console.log('📊 Resumo: Hoje:', todayMatches.length, '| Amanhã:', tomorrowMatches.length, '| Fim de semana:', weekendMatches.length, '| Top 6:', bestBets.length);
-            displayCurrentTab();
         }
 
         function switchTab(tabName) {
@@ -224,12 +212,12 @@
             }
 
             document.getElementById('loading').classList.add('hidden');
-            
+
             if (matches.length === 0) {
                 document.getElementById('matches-container').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
-                document.getElementById('error-detail').innerText = 'Não há jogos com odds disponíveis para esta categoria no momento.';
+                document.getElementById('error-detail').innerText = 'Não há jogos agendados para esta categoria no momento.';
                 return;
             }
 
@@ -243,18 +231,16 @@
             const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
 
             matchesToShow.forEach((match, index) => {
-                const date = new Date(match.utcDate);
-                const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-                const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const time = match.strTime ? match.strTime.substring(0, 5) : '--:--';
+                const dateStr = match.dateEvent || '';
+                const dateParts = dateStr.split('-');
+                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '--';
+                
                 const isGold = isBestBets || index === 0;
                 const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
-
-                const odds = match.odds;
-                const homeOdd = odds?.homeWin ? odds.homeWin.toFixed(2) : '-';
-                const drawOdd = odds?.draw ? odds.draw.toFixed(2) : '-';
-                const awayOdd = odds?.awayWin ? odds.awayWin.toFixed(2) : '-';
-                const over25Odd = odds?.over25 ? odds.over25.toFixed(2) : '-';
-                const bookmakerName = odds?.bookmaker || 'Indisponível';
+                
+                const homeShort = match.strHomeTeam ? match.strHomeTeam.substring(0, 3).toUpperCase() : '---';
+                const awayShort = match.strAwayTeam ? match.strAwayTeam.substring(0, 3).toUpperCase() : '---';
 
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
@@ -262,56 +248,42 @@
 
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.league}</span>
+                            <span>${match.strLeague || 'Futebol'}</span>
                             <span class="text-gray-600">•</span>
-                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>${formattedDate} às ${time}</span>
                         </div>
 
                         <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.homeTeam.shortName}
-                                </div>
-                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
+                                ${match.strHomeTeamBadge ? 
+                                    `<img src="${match.strHomeTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${homeShort}</div>'">` :
+                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${homeShort}</div>`
+                                }
+                                <p class="font-bold text-sm">${match.strHomeTeam || 'Casa'}</p>
                             </div>
                             <div class="text-gray-600 font-bold text-xl px-2">VS</div>
                             <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.awayTeam.shortName}
-                                </div>
-                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
+                                ${match.strAwayTeamBadge ? 
+                                    `<img src="${match.strAwayTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${awayShort}</div>'">` :
+                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${awayShort}</div>`
+                                }
+                                <p class="font-bold text-sm">${match.strAwayTeam || 'Fora'}</p>
                             </div>
                         </div>
 
                         <div class="bg-slate-900/80 rounded-xl p-4 mb-4 border border-slate-600">
                             <div class="flex items-center justify-between mb-3">
                                 <p class="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                                    <i class="fa-solid fa-chart-bar mr-1"></i> Odds Reais
+                                    <i class="fa-solid fa-chart-bar mr-1"></i> Sugestão
                                 </p>
-                                <span class="text-xs text-gray-500 bg-slate-700 px-2 py-0.5 rounded-full">${bookmakerName}</span>
-                            </div>
-
-                            <div class="grid grid-cols-3 gap-2 mb-3">
-                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
-                                    <p class="text-[10px] text-gray-400 uppercase">Casa</p>
-                                    <p class="text-emerald-400 font-extrabold text-lg">${homeOdd}</p>
-                                </button>
-                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
-                                    <p class="text-[10px] text-gray-400 uppercase">Empate</p>
-                                    <p class="text-emerald-400 font-extrabold text-lg">${drawOdd}</p>
-                                </button>
-                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
-                                    <p class="text-[10px] text-gray-400 uppercase">Fora</p>
-                                    <p class="text-emerald-400 font-extrabold text-lg">${awayOdd}</p>
-                                </button>
                             </div>
 
                             <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
                                 <div>
-                                    <p class="text-xs text-emerald-400 font-bold">Mais de 2.5 Golos</p>
+                                    <p class="text-xs text-emerald-400 font-bold">Mais de 1.5 Golos</p>
                                 </div>
                                 <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">
-                                    ${over25Odd}
+                                    @1.45
                                 </button>
                             </div>
                         </div>
