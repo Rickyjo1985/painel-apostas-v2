@@ -75,39 +75,60 @@
     </footer>
 
     <script>
+        const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
         let allMatchesData = null;
         let currentTab = 'today';
 
-        function formatDate(date) {
-            return date.toISOString().split('T')[0];
-        }
-
-        async function fetchMatchesForDate(dateStr) {
+        async function fetchMatches(dateFrom, dateTo) {
             try {
-                const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=Soccer`;
-                const response = await fetch(url);
+                const url = `https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                
+                const response = await fetch(proxyUrl);
                 if (!response.ok) return [];
+                
                 const data = await response.json();
-                return data.events || [];
+                const parsed = JSON.parse(data.contents);
+                return parsed.matches || [];
             } catch (e) {
-                console.error('Erro ao buscar jogos para', dateStr, e);
+                console.error('Erro ao buscar jogos:', e);
                 return [];
             }
         }
 
         async function loadMatches() {
             try {
-                console.log('🔍 A carregar jogos reais do TheSportsDB...');
+                console.log('🔍 A carregar jogos reais da football-data.org...');
 
                 const now = new Date();
-                const todayStr = formatDate(now);
+                const today = now.toISOString().split('T')[0];
                 
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowStr = formatDate(tomorrow);
+                const dateTo = new Date(now);
+                dateTo.setDate(dateTo.getDate() + 10);
+                const toDate = dateTo.toISOString().split('T')[0];
+
+                const allMatches = await fetchMatches(today, toDate);
+                console.log('✅ Jogos carregados:', allMatches.length);
+
+                if (allMatches.length === 0) {
+                    showError('Sem jogos disponíveis', 'Não há jogos agendados para os próximos dias.');
+                    return;
+                }
+
+                // Filtrar apenas jogos futuros
+                const futureMatches = allMatches.filter(m => 
+                    m.status === 'SCHEDULED' || m.status === 'TIMED'
+                );
+
+                function getLisbonDate(dateString) {
+                    return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
+                }
+
+                const todayStr = getLisbonDate(now);
+                const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = getLisbonDate(tomorrow);
 
                 const dayOfWeek = now.getDay();
-                
                 let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
                 let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
                 
@@ -115,73 +136,42 @@
                 if (dayOfWeek === 6) { daysUntilFriday = 6; daysUntilSaturday = 0; }
                 if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
                 
-                const friday = new Date(now);
-                friday.setDate(friday.getDate() + daysUntilFriday);
-                const fridayStr = formatDate(friday);
+                const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
+                const fridayStr = getLisbonDate(friday);
                 
-                const saturday = new Date(now);
-                saturday.setDate(saturday.getDate() + daysUntilSaturday);
-                const saturdayStr = formatDate(saturday);
+                const saturday = new Date(now); saturday.setDate(saturday.getDate() + daysUntilSaturday);
+                const saturdayStr = getLisbonDate(saturday);
                 
-                const sunday = new Date(saturday);
-                sunday.setDate(sunday.getDate() + 1);
-                const sundayStr = formatDate(sunday);
+                const sunday = new Date(saturday); sunday.setDate(sunday.getDate() + 1);
+                const sundayStr = getLisbonDate(sunday);
 
-                const [todayMatches, tomorrowMatches, fridayMatches, saturdayMatches, sundayMatches] = await Promise.all([
-                    fetchMatchesForDate(todayStr),
-                    fetchMatchesForDate(tomorrowStr),
-                    fetchMatchesForDate(fridayStr),
-                    fetchMatchesForDate(saturdayStr),
-                    fetchMatchesForDate(sundayStr)
-                ]);
-
-                // 🌟 FILTRO ALARGADO PARA LIGAS EUROPEIAS 🌟
-                const topLeaguesKeywords = [
-                    'premier', 'la liga', 'bundesliga', 'serie a', 'ligue 1', 
-                    'primeira', 'liga portugal', 'champions', 'europa', 'conference', 
-                    'eredivisie', 'mls', 'liga mx', 'brasileirao', 'copa libertadores'
-                ];
+                const todayMatches = futureMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
+                const tomorrowMatches = futureMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
                 
-                function filterTopLeagues(matches) {
-                    return matches.filter(m => {
-                        if (!m.strLeague) return false;
-                        const leagueLower = m.strLeague.toLowerCase();
-                        return topLeaguesKeywords.some(kw => leagueLower.includes(kw));
-                    });
-                }
+                const weekendMatches = futureMatches.filter(m => {
+                    const d = getLisbonDate(m.utcDate);
+                    return d === saturdayStr || d === sundayStr;
+                });
 
-                const allWeekendMatches = [...fridayMatches, ...saturdayMatches, ...sundayMatches];
-                
-                // Priorizar ligas top, mas se não houver, mostrar todos os jogos do fim de semana
-                const weekendTopMatches = filterTopLeagues([...saturdayMatches, ...sundayMatches]);
-                const weekendFallback = weekendTopMatches.length > 0 ? weekendTopMatches : [...saturdayMatches, ...sundayMatches];
-                
-                const bestBetsTop = filterTopLeagues(allWeekendMatches).slice(0, 6);
-                const bestBetsFallback = bestBetsTop.length > 0 ? bestBetsTop : allWeekendMatches.slice(0, 6);
+                const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC', 'EC1'];
+                const weekendDaysMatches = futureMatches.filter(m => {
+                    const d = getLisbonDate(m.utcDate);
+                    return d === fridayStr || d === saturdayStr || d === sundayStr;
+                });
 
-                function sortByTime(matches) {
-                    return matches.sort((a, b) => (a.strTime || '').localeCompare(b.strTime || ''));
-                }
-
-                // Se não houver jogos "top" hoje, mostrar todos os jogos de hoje como fallback
-                const todayTop = filterTopLeagues(todayMatches);
-                const tomorrowTop = filterTopLeagues(tomorrowMatches);
+                const bestBets = weekendDaysMatches
+                    .filter(m => topLeagues.includes(m.competition.code))
+                    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
+                    .slice(0, 6);
 
                 allMatchesData = {
-                    today: sortByTime(todayTop.length > 0 ? todayTop : todayMatches),
-                    tomorrow: sortByTime(tomorrowTop.length > 0 ? tomorrowTop : tomorrowMatches),
-                    weekend: sortByTime(weekendFallback),
-                    bestBets: sortByTime(bestBetsFallback)
+                    today: todayMatches,
+                    tomorrow: tomorrowMatches,
+                    weekend: weekendMatches,
+                    bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6)
                 };
 
-                const total = todayMatches.length + tomorrowMatches.length + allWeekendMatches.length;
-                console.log('✅ Total de jogos carregados:', total);
-                
-                if (total === 0) {
-                    showError('Sem jogos disponíveis', 'Não há jogos de futebol agendados para os próximos dias.');
-                    return;
-                }
-
+                console.log('📊 Resumo: Hoje:', todayMatches.length, '| Amanhã:', tomorrowMatches.length, '| Fim de semana:', weekendMatches.length, '| Top 6:', bestBets.length);
                 document.getElementById('status-text').innerText = 'Jogos Reais Atualizados Automaticamente';
                 displayCurrentTab();
 
@@ -242,16 +232,11 @@
             const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
 
             matchesToShow.forEach((match, index) => {
-                const time = match.strTime ? match.strTime.substring(0, 5) : '--:--';
-                const dateStr = match.dateEvent || '';
-                const dateParts = dateStr.split('-');
-                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '--';
-                
+                const date = new Date(match.utcDate);
+                const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+                const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const isGold = isBestBets || index === 0;
                 const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
-                
-                const homeShort = match.strHomeTeam ? match.strHomeTeam.substring(0, 3).toUpperCase() : '---';
-                const awayShort = match.strAwayTeam ? match.strAwayTeam.substring(0, 3).toUpperCase() : '---';
 
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
@@ -259,26 +244,24 @@
 
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.strLeague || 'Futebol'}</span>
+                            <span>${match.competition.name}</span>
                             <span class="text-gray-600">•</span>
-                            <span><i class="fa-regular fa-clock mr-1"></i>${formattedDate} às ${time}</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
                         </div>
 
                         <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
-                                ${match.strHomeTeamBadge ? 
-                                    `<img src="${match.strHomeTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${homeShort}</div>'">` :
-                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${homeShort}</div>`
-                                }
-                                <p class="font-bold text-sm">${match.strHomeTeam || 'Casa'}</p>
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
                             </div>
                             <div class="text-gray-600 font-bold text-xl px-2">VS</div>
                             <div class="text-center flex-1">
-                                ${match.strAwayTeamBadge ? 
-                                    `<img src="${match.strAwayTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${awayShort}</div>'">` :
-                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${awayShort}</div>`
-                                }
-                                <p class="font-bold text-sm">${match.strAwayTeam || 'Fora'}</p>
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
                             </div>
                         </div>
 
