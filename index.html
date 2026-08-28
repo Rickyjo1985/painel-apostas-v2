@@ -108,11 +108,9 @@
 
                 const dayOfWeek = now.getDay();
                 
-                // Calcular sexta, sábado e domingo
                 let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
                 let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
                 
-                // Se hoje for sexta, sábado ou domingo, usar estes dias
                 if (dayOfWeek === 5) { daysUntilFriday = 0; daysUntilSaturday = 1; }
                 if (dayOfWeek === 6) { daysUntilFriday = 6; daysUntilSaturday = 0; }
                 if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
@@ -129,7 +127,6 @@
                 sunday.setDate(sunday.getDate() + 1);
                 const sundayStr = formatDate(sunday);
 
-                // Buscar jogos para cada dia
                 const [todayMatches, tomorrowMatches, fridayMatches, saturdayMatches, sundayMatches] = await Promise.all([
                     fetchMatchesForDate(todayStr),
                     fetchMatchesForDate(tomorrowStr),
@@ -138,29 +135,43 @@
                     fetchMatchesForDate(sundayStr)
                 ]);
 
-                // Filtrar apenas ligas principais (palavras-chave)
-                const topLeaguesKeywords = ['Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Primeira Liga', 'Champions League', 'Europa League', 'Liga Portugal', 'Eredivisie', 'MLS'];
+                // 🌟 FILTRO ALARGADO PARA LIGAS EUROPEIAS 🌟
+                const topLeaguesKeywords = [
+                    'premier', 'la liga', 'bundesliga', 'serie a', 'ligue 1', 
+                    'primeira', 'liga portugal', 'champions', 'europa', 'conference', 
+                    'eredivisie', 'mls', 'liga mx', 'brasileirao', 'copa libertadores'
+                ];
                 
                 function filterTopLeagues(matches) {
-                    return matches.filter(m => 
-                        topLeaguesKeywords.some(kw => m.strLeague && m.strLeague.toLowerCase().includes(kw.toLowerCase()))
-                    );
+                    return matches.filter(m => {
+                        if (!m.strLeague) return false;
+                        const leagueLower = m.strLeague.toLowerCase();
+                        return topLeaguesKeywords.some(kw => leagueLower.includes(kw));
+                    });
                 }
 
                 const allWeekendMatches = [...fridayMatches, ...saturdayMatches, ...sundayMatches];
-                const weekendMatches = filterTopLeagues([...saturdayMatches, ...sundayMatches]);
-                const bestBets = filterTopLeagues(allWeekendMatches).slice(0, 6);
+                
+                // Priorizar ligas top, mas se não houver, mostrar todos os jogos do fim de semana
+                const weekendTopMatches = filterTopLeagues([...saturdayMatches, ...sundayMatches]);
+                const weekendFallback = weekendTopMatches.length > 0 ? weekendTopMatches : [...saturdayMatches, ...sundayMatches];
+                
+                const bestBetsTop = filterTopLeagues(allWeekendMatches).slice(0, 6);
+                const bestBetsFallback = bestBetsTop.length > 0 ? bestBetsTop : allWeekendMatches.slice(0, 6);
 
-                // Ordenar por hora
                 function sortByTime(matches) {
                     return matches.sort((a, b) => (a.strTime || '').localeCompare(b.strTime || ''));
                 }
 
+                // Se não houver jogos "top" hoje, mostrar todos os jogos de hoje como fallback
+                const todayTop = filterTopLeagues(todayMatches);
+                const tomorrowTop = filterTopLeagues(tomorrowMatches);
+
                 allMatchesData = {
-                    today: sortByTime(todayMatches),
-                    tomorrow: sortByTime(tomorrowMatches),
-                    weekend: sortByTime(weekendMatches.length > 0 ? weekendMatches : allWeekendMatches),
-                    bestBets: bestBets.length > 0 ? bestBets : sortByTime(allWeekendMatches).slice(0, 6)
+                    today: sortByTime(todayTop.length > 0 ? todayTop : todayMatches),
+                    tomorrow: sortByTime(tomorrowTop.length > 0 ? tomorrowTop : tomorrowMatches),
+                    weekend: sortByTime(weekendFallback),
+                    bestBets: sortByTime(bestBetsFallback)
                 };
 
                 const total = todayMatches.length + tomorrowMatches.length + allWeekendMatches.length;
