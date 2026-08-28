@@ -72,29 +72,24 @@
     </footer>
 
     <script>
-        const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
         let allMatchesData = null;
         let currentTab = 'today';
 
-        // Timeout de segurança: se demorar mais de 15s, mostra mensagem
         setTimeout(() => {
-            if (document.getElementById('loading').style.display !== 'none') {
+            if (!document.getElementById('loading').classList.contains('hidden')) {
                 showError('Tempo esgotado', 'A ligação está demorada. Recarrega a página (Ctrl+F5).');
             }
-        }, 15000);
+        }, 20000);
 
         function showError(title, detail) {
-            document.getElementById('loading').style.display = 'none';
+            document.getElementById('loading').classList.add('hidden');
             document.getElementById('matches-container').classList.add('hidden');
             document.getElementById('error-message').classList.remove('hidden');
             document.getElementById('error-text').innerText = title;
             document.getElementById('error-detail').innerText = detail;
         }
 
-        // Verificar se é liga europeia
-        function isEuropean(leagueName, leagueCode) {
-            const europeanCodes = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC', 'EC1', 'DED'];
-            if (leagueCode && europeanCodes.includes(leagueCode)) return true;
+        function isEuropean(leagueName) {
             if (!leagueName) return false;
             const lower = leagueName.toLowerCase();
             const keywords = ['premier league', 'la liga', 'bundesliga', 'serie a', 'ligue 1', 
@@ -104,71 +99,66 @@
             return keywords.some(kw => lower.includes(kw));
         }
 
-        // Carregar jogos via TheSportsDB (funciona SEMPRE, sem chave)
-        async function loadFromTheSportsDB() {
-            console.log('📡 A usar TheSportsDB...');
-            const now = new Date();
-            const dates = [];
-            
-            // Gerar datas para hoje + próximos 10 dias
-            for (let i = 0; i < 10; i++) {
-                const d = new Date(now);
-                d.setDate(d.getDate() + i);
-                dates.push(d.toISOString().split('T')[0]);
-            }
-
-            const allMatches = [];
-            for (const dateStr of dates) {
-                try {
-                    const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=Soccer`;
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.events) {
-                            data.events.forEach(e => {
-                                allMatches.push({
-                                    utcDate: e.strTimestamp || (e.dateEvent + 'T' + (e.strTime || '20:00:00')),
-                                    homeTeam: { 
-                                        name: e.strHomeTeam || 'Casa', 
-                                        shortName: (e.strHomeTeam || 'CAS').substring(0, 3).toUpperCase() 
-                                    },
-                                    awayTeam: { 
-                                        name: e.strAwayTeam || 'Fora', 
-                                        shortName: (e.strAwayTeam || 'FOR').substring(0, 3).toUpperCase() 
-                                    },
-                                    competition: { 
-                                        name: e.strLeague || 'Futebol', 
-                                        code: '' 
-                                    },
-                                    status: 'SCHEDULED'
-                                });
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Erro ao buscar', dateStr, e);
-                }
-            }
-            return allMatches;
-        }
-
         async function loadMatches() {
             try {
-                console.log('🔍 A iniciar...');
+                console.log('🔍 A iniciar carregamento...');
                 
-                // Tentar carregar
-                const allMatches = await loadFromTheSportsDB();
+                const now = new Date();
+                const dates = [];
                 
-                console.log('✅ Jogos carregados:', allMatches.length);
+                for (let i = 0; i < 10; i++) {
+                    const d = new Date(now);
+                    d.setDate(d.getDate() + i);
+                    dates.push(d.toISOString().split('T')[0]);
+                }
+
+                const allMatches = [];
+                
+                for (const dateStr of dates) {
+                    try {
+                        const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=Soccer`;
+                        const response = await fetch(url);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.events) {
+                                data.events.forEach(e => {
+                                    allMatches.push({
+                                        utcDate: e.strTimestamp || (e.dateEvent + 'T' + (e.strTime || '20:00:00')),
+                                        homeTeam: { 
+                                            name: e.strHomeTeam || 'Casa', 
+                                            shortName: (e.strHomeTeam || 'CAS').substring(0, 3).toUpperCase() 
+                                        },
+                                        awayTeam: { 
+                                            name: e.strAwayTeam || 'Fora', 
+                                            shortName: (e.strAwayTeam || 'FOR').substring(0, 3).toUpperCase() 
+                                        },
+                                        competition: { 
+                                            name: e.strLeague || 'Futebol', 
+                                            code: '' 
+                                        },
+                                        status: 'SCHEDULED'
+                                    });
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Erro ao buscar', dateStr, e);
+                    }
+                }
+                
+                console.log('✅ Total de jogos carregados:', allMatches.length);
 
                 if (allMatches.length === 0) {
                     showError('Sem jogos', 'Não há jogos disponíveis para os próximos dias.');
                     return;
                 }
 
-                // Processar e organizar
                 processMatches(allMatches);
-                document.getElementById('status-text').innerText = `${allMatchesData.today.length + allMatchesData.tomorrow.length + allMatchesData.weekend.length} jogos carregados`;
+                
+                const totalEuro = allMatchesData.today.european.length + allMatchesData.tomorrow.european.length + allMatchesData.weekend.european.length;
+                const totalAll = allMatches.length;
+                
+                document.getElementById('status-text').innerText = `${totalAll} jogos (${totalEuro} europeus)`;
                 displayCurrentTab();
 
             } catch (error) {
@@ -217,24 +207,21 @@
                 return d === fridayStr || d === saturdayStr || d === sundayStr;
             });
 
-            // Separar europeus e outros
             function separate(matches) {
-                const european = matches.filter(m => isEuropean(m.competition.name, m.competition.code));
-                const others = matches.filter(m => !isEuropean(m.competition.name, m.competition.code));
+                const european = matches.filter(m => isEuropean(m.competition.name));
+                const others = matches.filter(m => !isEuropean(m.competition.name));
                 return { european, others };
             }
+
+            const bestBetsEuropean = weekendDaysMatches.filter(m => isEuropean(m.competition.name)).slice(0, 6);
+            const bestBetsAll = weekendDaysMatches.slice(0, 6);
 
             allMatchesData = {
                 today: separate(todayMatches),
                 tomorrow: separate(tomorrowMatches),
                 weekend: separate(weekendMatches),
-                bestBets: weekendDaysMatches.filter(m => isEuropean(m.competition.name, m.competition.code)).slice(0, 6)
+                bestBets: bestBetsEuropean.length > 0 ? bestBetsEuropean : bestBetsAll
             };
-
-            // Se não houver europeus no bestBets, usar os primeiros 6 do fim de semana
-            if (allMatchesData.bestBets.length === 0) {
-                allMatchesData.bestBets = weekendDaysMatches.slice(0, 6);
-            }
 
             console.log('📊 Resumo:');
             console.log('  Hoje:', allMatchesData.today.european.length, 'euro +', allMatchesData.today.others.length, 'outros');
@@ -265,7 +252,7 @@
                 case 'bestBets': data = { european: allMatchesData.bestBets, others: [] }; tabTitle = 'Top 6'; break;
             }
 
-            document.getElementById('loading').style.display = 'none';
+            document.getElementById('loading').classList.add('hidden');
             const total = data.european.length + data.others.length;
 
             if (total === 0) {
@@ -284,7 +271,7 @@
             const container = document.getElementById('matches-container');
             container.innerHTML = '';
 
-            // Secção Europeia
+            // Se houver ligas europeias, mostrar primeiro
             if (data.european.length > 0) {
                 container.innerHTML += `
                     <div class="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4">
@@ -295,15 +282,9 @@
                     const betNum = isBestBets ? index + 1 : null;
                     container.innerHTML += createCard(match, true, betNum);
                 });
-            } else if (!isBestBets) {
-                container.innerHTML += `
-                    <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-center">
-                        <p class="text-gray-400 text-sm"><i class="fa-solid fa-info-circle mr-2 text-blue-400"></i>As ligas europeias jogam normalmente ao fim de semana.</p>
-                    </div>
-                `;
             }
 
-            // Secção Outras
+            // Mostrar outras ligas
             if (data.others.length > 0) {
                 if (data.european.length > 0) {
                     container.innerHTML += `
@@ -311,7 +292,15 @@
                             <p class="text-gray-400 font-bold text-sm"><i class="fa-solid fa-globe mr-2"></i>OUTRAS LIGAS</p>
                         </div>
                     `;
+                } else if (!isBestBets) {
+                    // Se não houver europeus, mostrar mensagem informativa
+                    container.innerHTML += `
+                        <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+                            <p class="text-amber-400 text-sm"><i class="fa-solid fa-info-circle mr-2"></i>Hoje não há ligas europeias. As grandes ligas (Premier League, La Liga, Liga Portugal, etc.) jogam normalmente ao fim de semana (sábado e domingo).</p>
+                        </div>
+                    `;
                 }
+                
                 data.others.forEach(match => {
                     container.innerHTML += createCard(match, false, null);
                 });
