@@ -1,1 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Apostas Premium</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gold-glow { box-shadow: 0 0 20px rgba(251, 191, 36, 0.15); }
+        .tab-active { border-bottom: 3px solid #fbbf24; color: #fbbf24; font-weight: 700; }
+        .tab-inactive { color: #94a3b8; }
+        .odd-btn { transition: all 0.2s; }
+        .odd-btn:hover { transform: scale(1.05); background-color: #059669; }
+    </style>
+</head>
+<body class="bg-slate-900 text-gray-100 min-h-screen flex flex-col">
 
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-400 text-slate-900 p-2 rounded-lg">
+                    <i class="fa-solid fa-crown text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold tracking-tight text-white">PAINEL <span class="text-amber-400">PREMIUM</span></h1>
+                    <p class="text-xs text-gray-400" id="status-text">Jogos Reais Atualizados</p>
+                </div>
+            </div>
+            <div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20 flex items-center">
+                <span class="relative flex h-2 w-2 mr-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Ao Vivo
+            </div>
+        </div>
+    </header>
+
+    <nav class="bg-slate-800/50 border-b border-slate-700 sticky top-[73px] z-40">
+        <div class="max-w-3xl mx-auto px-4">
+            <div class="flex overflow-x-auto gap-6">
+                <button onclick="switchTab('today')" class="tab-active py-4 px-1 text-sm whitespace-nowrap" id="tab-today">Hoje</button>
+                <button onclick="switchTab('tomorrow')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap" id="tab-tomorrow">Amanhã</button>
+                <button onclick="switchTab('weekend')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap" id="tab-weekend">Fim de Semana</button>
+                <button onclick="switchTab('bestBets')" class="tab-inactive py-4 px-1 text-sm whitespace-nowrap" id="tab-bestBets">⭐ Top 6</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
+        <div id="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
+            <p class="text-gray-400">A carregar jogos reais...</p>
+        </div>
+        <div id="matches-container" class="space-y-6 hidden"></div>
+        <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
+            <i class="fa-solid fa-circle-info text-4xl mb-3 text-amber-400"></i>
+            <p id="error-text" class="font-bold text-lg mb-2">Sem jogos disponíveis</p>
+            <p id="error-detail" class="text-sm text-gray-500"></p>
+        </div>
+    </main>
+
+    <footer class="bg-slate-800 border-t border-slate-700 mt-8 py-6">
+        <div class="max-w-3xl mx-auto px-4 text-center">
+            <p class="text-gray-500 text-xs">Jogue com responsabilidade. © 2026 Painel Apostas Premium.</p>
+        </div>
+    </footer>
+
+    <script>
+        const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
+        let allMatchesData = null;
+        let currentTab = 'today';
+
+        setTimeout(() => {
+            if (!document.getElementById('loading').classList.contains('hidden')) {
+                showError('Tempo esgotado', 'A ligação está demorada. Recarrega a página (Ctrl+F5).');
+            }
+        }, 20000);
+
+        function showError(title, detail) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('matches-container').classList.add('hidden');
+            document.getElementById('error-message').classList.remove('hidden');
+            document.getElementById('error-text').innerText = title;
+            document.getElementById('error-detail').innerText = detail;
+        }
+
+        async function loadMatches() {
+            try {
+                console.log('🔍 A carregar jogos da football-data.org...');
+                
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const dateTo = new Date(now);
+                dateTo.setDate(dateTo.getDate() + 10);
+                const toDate = dateTo.toISOString().split('T')[0];
+
+                const matchesUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(matchesUrl)}`;
+
+                const response = await fetch(proxyUrl, {
+                    headers: { 'X-Auth-Token': FOOTBALL_API_KEY }
+                });
+
+                if (!response.ok) throw new Error(`Erro: ${response.status}`);
+
+                const data = await response.json();
+                console.log('✅ Jogos carregados:', data.matches.length);
+
+                const allMatches = data.matches.filter(m => 
+                    m.status === 'SCHEDULED' || m.status === 'TIMED'
+                );
+
+                if (allMatches.length === 0) {
+                    showError('Sem jogos', 'Não há jogos agendados para os próximos dias.');
+                    return;
+                }
+
+                document.getElementById('status-text').innerText = `${allMatches.length} jogos carregados`;
+                processMatches(allMatches);
+                displayCurrentTab();
+
+            } catch (error) {
+                console.error('❌ Erro:', error);
+                showError('Erro ao carregar', 'Não foi possível obter os dados. Tenta novamente mais tarde.');
+            }
+        }
+
+        function processMatches(allMatches) {
+            function getLisbonDate(dateString) {
+                return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
+            }
+
+            const now = new Date();
+            const todayStr = getLisbonDate(now);
+            const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = getLisbonDate(tomorrow);
+
+            const dayOfWeek = now.getDay();
+            let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
+            let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
+            if (dayOfWeek === 5) { daysUntilFriday = 0; daysUntilSaturday = 1; }
+            if (dayOfWeek === 6) { daysUntilFriday = 6; daysUntilSaturday = 0; }
+            if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
+            
+            const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
+            const fridayStr = getLisbonDate(friday);
+            const saturday = new Date(now); saturday.setDate(saturday.getDate() + daysUntilSaturday);
+            const saturdayStr = getLisbonDate(saturday);
+            const sunday = new Date(saturday); sunday.setDate(sunday.getDate() + 1);
+            const sundayStr = getLisbonDate(sunday);
+
+            const todayMatches = allMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
+            const tomorrowMatches = allMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
+            const weekendMatches = allMatches.filter(m => {
+                const d = getLisbonDate(m.utcDate);
+                return d === saturdayStr || d === sundayStr;
+            });
+
+            const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC'];
+            const weekendDaysMatches = allMatches.filter(m => {
+                const d = getLisbonDate(m.utcDate);
+                return d === fridayStr || d === saturdayStr || d === sundayStr;
+            });
+
+            const bestBets = weekendDaysMatches
+                .filter(m => topLeagues.includes(m.competition.code))
+                .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
+                .slice(0, 6);
+
+            allMatchesData = { 
+                today: todayMatches, 
+                tomorrow: tomorrowMatches, 
+                weekend: weekendMatches, 
+                bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6)
+            };
+
+            console.log('📊 Resumo: Hoje:', todayMatches.length, '| Amanhã:', tomorrowMatches.length, '| Fim de semana:', weekendMatches.length, '| Top 6:', bestBets.length);
+        }
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.remove('tab-active');
+                btn.classList.add('tab-inactive');
+            });
+            document.getElementById('tab-' + tabName).classList.remove('tab-inactive');
+            document.getElementById('tab-' + tabName).classList.add('tab-active');
+            displayCurrentTab();
+        }
+
+        function displayCurrentTab() {
+            if (!allMatchesData) return;
+            let matches = [];
+            let tabTitle = '';
+
+            switch(currentTab) {
+                case 'today': matches = allMatchesData.today || []; tabTitle = 'Hoje'; break;
+                case 'tomorrow': matches = allMatchesData.tomorrow || []; tabTitle = 'Amanhã'; break;
+                case 'weekend': matches = allMatchesData.weekend || []; tabTitle = 'Fim de Semana'; break;
+                case 'bestBets': matches = allMatchesData.bestBets || []; tabTitle = 'Top 6'; break;
+            }
+
+            document.getElementById('loading').classList.add('hidden');
+            
+            if (matches.length === 0) {
+                document.getElementById('matches-container').classList.add('hidden');
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
+                document.getElementById('error-detail').innerText = 'Não há jogos agendados para esta categoria.';
+                return;
+            }
+
+            document.getElementById('error-message').classList.add('hidden');
+            displayMatches(matches, currentTab === 'bestBets');
+        }
+
+        function displayMatches(matches, isBestBets = false) {
+            const container = document.getElementById('matches-container');
+            container.innerHTML = '';
+            const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
+
+            matchesToShow.forEach((match, index) => {
+                const date = new Date(match.utcDate);
+                const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+                const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const isGold = isBestBets || index === 0;
+                const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
+
+                const card = `
+                    <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
+                        ${isGold ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
+
+                        <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
+                            <i class="fa-solid fa-trophy text-amber-400"></i>
+                            <span>${match.competition.name}</span>
+                            <span class="text-gray-600">•</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
+                        </div>
+
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-center flex-1">
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
+                            </div>
+                            <div class="text-gray-600 font-bold text-xl px-2">VS</div>
+                            <div class="text-center flex-1">
+                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                                </div>
+                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/80 rounded-xl p-4 border border-slate-600">
+                            <p class="text-xs text-amber-400 font-bold uppercase mb-3"><i class="fa-solid fa-chart-bar mr-1"></i> Sugestão</p>
+                            <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                                <p class="text-xs text-emerald-400 font-bold">Mais de 1.5 Golos</p>
+                                <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">@1.45</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += card;
+            });
+
+            container.classList.remove('hidden');
+        }
+
+        loadMatches();
+    </script>
+</body>
+</html>
