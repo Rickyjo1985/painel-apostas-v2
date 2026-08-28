@@ -1,17 +1,25 @@
 const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
 const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
 
+// Função infalível para obter a data no fuso horário de Lisboa (Formato YYYY-MM-DD)
+function getLisbonDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Lisbon' });
+}
+
 export default async function handler(req, res) {
   try {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const todayStr = getLisbonDate(now);
+    
+    // Buscar jogos para os próximos 10 dias para garantir cobertura
     const dateTo = new Date(now);
     dateTo.setDate(dateTo.getDate() + 10);
-    const toDate = dateTo.toISOString().split('T')[0];
+    const toDateStr = getLisbonDate(dateTo);
 
     // 1. Buscar jogos da football-data.org
     const matchesResponse = await fetch(
-      `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`,
+      `https://api.football-data.org/v4/matches?dateFrom=${todayStr}&dateTo=${toDateStr}`,
       { headers: { 'X-Auth-Token': FOOTBALL_API_KEY } }
     );
 
@@ -78,7 +86,6 @@ export default async function handler(req, res) {
       if (oddsMap[key]) {
         odds = oddsMap[key];
       } else {
-        // Tentar match parcial
         for (const [k, v] of Object.entries(oddsMap)) {
           const [h, a] = k.split('|');
           if ((home.includes(h) || h.includes(home)) && (away.includes(a) || a.includes(away))) {
@@ -87,35 +94,41 @@ export default async function handler(req, res) {
           }
         }
       }
-
       return { ...match, odds };
     });
 
-    // 4. Organizar por categorias
-    function getLisbonDate(dateString) {
-      return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
+    // 4. Cálculo infalível das datas de Sexta, Sábado e Domingo (Hora de Lisboa)
+    const currentDay = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sáb
+
+    let targetFriday = new Date(now);
+    let targetSaturday = new Date(now);
+    let targetSunday = new Date(now);
+
+    if (currentDay === 5) { // Hoje é Sexta
+      targetSaturday.setDate(now.getDate() + 1);
+      targetSunday.setDate(now.getDate() + 2);
+    } else if (currentDay === 6) { // Hoje é Sábado
+      targetFriday.setDate(now.getDate() + 6); // Próxima sexta
+      targetSunday.setDate(now.getDate() + 1);
+    } else if (currentDay === 0) { // Hoje é Domingo
+      targetFriday.setDate(now.getDate() + 5); // Próxima sexta
+      targetSaturday.setDate(now.getDate() + 6);
+    } else { // Hoje é Seg, Ter, Qua ou Qui
+      targetFriday.setDate(now.getDate() + (5 - currentDay));
+      targetSaturday.setDate(now.getDate() + (6 - currentDay));
+      targetSunday.setDate(now.getDate() + (7 - currentDay));
     }
 
-    const todayStr = getLisbonDate(now);
-    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    const fridayStr = getLisbonDate(targetFriday);
+    const saturdayStr = getLisbonDate(targetSaturday);
+    const sundayStr = getLisbonDate(targetSunday);
+    const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
     const tomorrowStr = getLisbonDate(tomorrow);
 
-    const dayOfWeek = now.getDay();
-    let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
-    let daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
-    if (dayOfWeek === 5) { daysUntilFriday = 0; daysUntilSaturday = 1; }
-    if (dayOfWeek === 6) { daysUntilFriday = 6; daysUntilSaturday = 0; }
-    if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
-    
-    const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
-    const fridayStr = getLisbonDate(friday);
-    const saturday = new Date(now); saturday.setDate(saturday.getDate() + daysUntilSaturday);
-    const saturdayStr = getLisbonDate(saturday);
-    const sunday = new Date(saturday); sunday.setDate(sunday.getDate() + 1);
-    const sundayStr = getLisbonDate(sunday);
-
+    // 5. Filtrar por categorias
     const todayMatches = matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === todayStr);
     const tomorrowMatches = matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
+    
     const weekendMatches = matchesWithOdds.filter(m => {
       const d = getLisbonDate(m.utcDate);
       return d === saturdayStr || d === sundayStr;
@@ -140,7 +153,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Erro:', error);
+    console.error('Erro no servidor:', error);
     res.status(500).json({ error: error.message });
   }
 }
