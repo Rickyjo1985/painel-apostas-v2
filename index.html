@@ -90,9 +90,11 @@
                 const toDate = dateTo.toISOString().split('T')[0];
 
                 const matchesUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(matchesUrl + '&X-Auth-Token=' + FOOTBALL_API_KEY)}`;
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(matchesUrl)}`;
 
-                const response = await fetch(proxyUrl);
+                const response = await fetch(proxyUrl, {
+                    headers: { 'X-Auth-Token': FOOTBALL_API_KEY }
+                });
 
                 if (!response.ok) throw new Error(`Erro: ${response.status}`);
 
@@ -113,7 +115,7 @@
 
             } catch (error) {
                 console.error('❌ Erro:', error);
-                showError('Erro ao carregar jogos', 'Não foi possível obter os dados. Tenta novamente mais tarde.');
+                showError('Erro ao carregar jogos', 'Não foi possível obter os dados. Tenta novamente mais tarde. Erro: ' + error.message);
             }
         }
 
