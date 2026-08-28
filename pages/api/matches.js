@@ -1,5 +1,5 @@
 const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
-const ODDS_API_KEY = 'COLOCA_AQUI_A_TUA_CHAVE_DA_THE_ODDS_API';
+const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
 
 export default async function handler(req, res) {
   try {
