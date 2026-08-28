@@ -1,28 +1,38 @@
 const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
-const ODDS_API_KEY = '58f5c88bdf6fb881991f31be71992249';
+const ODDS_API_KEY = 'COLOCA_AQUI_A_TUA_CHAVE_DA_THE_ODDS_API';
 
-// Função infalível: retorna a data em Lisboa no formato YYYY-MM-DD
+// Função infalível: retorna YYYY-MM-DD no fuso de Lisboa
 function getLisbonDate(date) {
-  const lisbonDate = new Date(date.toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }));
-  const year = lisbonDate.getFullYear();
-  const month = String(lisbonDate.getMonth() + 1).padStart(2, '0');
-  const day = String(lisbonDate.getDate()).padStart(2, '0');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Lisbon',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  
+  const year = parts.find(p => p.type === 'year').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
   return `${year}-${month}-${day}`;
 }
 
-// Retorna um objeto Date ajustado para o fuso horário de Lisboa
-function getLisbonNow() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }));
+// Retorna o dia da semana em Lisboa (0=Dom, 1=Seg, ..., 6=Sáb)
+function getLisbonDayOfWeek(date) {
+  const dayName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Lisbon',
+    weekday: 'short'
+  }).format(date);
+  const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[dayName];
 }
 
 export default async function handler(req, res) {
   try {
-    // Usar hora de Lisboa para TUDO
-    const lisbonNow = getLisbonNow();
-    const todayStr = getLisbonDate(lisbonNow);
+    const now = new Date();
+    const todayStr = getLisbonDate(now);
     
-    const dateTo = new Date(lisbonNow);
-    dateTo.setDate(dateTo.getDate() + 10);
+    const dateTo = new Date(now);
+    dateTo.setUTCDate(dateTo.getUTCDate() + 10);
     const toDateStr = getLisbonDate(dateTo);
 
     // 1. Buscar jogos
@@ -40,7 +50,7 @@ export default async function handler(req, res) {
       m.status === 'SCHEDULED' || m.status === 'TIMED'
     );
 
-    // 2. Buscar odds
+    // 2. Buscar odds (se tiver chave)
     let oddsMap = {};
     if (ODDS_API_KEY && !ODDS_API_KEY.startsWith('COLOCA')) {
       try {
@@ -105,38 +115,35 @@ export default async function handler(req, res) {
       return { ...match, odds };
     });
 
-    // 4. Calcular dias da semana BASEADO EM LISBOA (não no servidor!)
-    const currentDay = lisbonNow.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sáb
-
-    let targetFriday = new Date(lisbonNow);
-    let targetSaturday = new Date(lisbonNow);
-    let targetSunday = new Date(lisbonNow);
-
-    if (currentDay === 5) { // Sexta
-      // targetFriday já é hoje
-      targetSaturday.setDate(lisbonNow.getDate() + 1);
-      targetSunday.setDate(lisbonNow.getDate() + 2);
-    } else if (currentDay === 6) { // Sábado
-      targetFriday.setDate(lisbonNow.getDate() + 6);
-      // targetSaturday já é hoje
-      targetSunday.setDate(lisbonNow.getDate() + 1);
-    } else if (currentDay === 0) { // Domingo
-      targetFriday.setDate(lisbonNow.getDate() + 5);
-      targetSaturday.setDate(lisbonNow.getDate() + 6);
-      // targetSunday já é hoje
-    } else { // Seg, Ter, Qua, Qui
-      targetFriday.setDate(lisbonNow.getDate() + (5 - currentDay));
-      targetSaturday.setDate(lisbonNow.getDate() + (6 - currentDay));
-      targetSunday.setDate(lisbonNow.getDate() + (7 - currentDay));
+    // 4. Calcular sexta, sábado e domingo ITERANDO pelos próximos 10 dias
+    // Esta abordagem é 100% fiável porque usa o nome do dia em Lisboa
+    const nextWeekend = { friday: null, saturday: null, sunday: null };
+    const targetDays = { 5: 'friday', 6: 'saturday', 0: 'sunday' };
+    
+    for (let i = 0; i < 10; i++) {
+      const datePlusI = new Date(now);
+      datePlusI.setUTCDate(datePlusI.getUTCDate() + i);
+      const lisbonDayOfWeek = getLisbonDayOfWeek(datePlusI);
+      const targetKey = targetDays[lisbonDayOfWeek];
+      
+      if (targetKey && !nextWeekend[targetKey]) {
+        nextWeekend[targetKey] = getLisbonDate(datePlusI);
+      }
+      
+      if (nextWeekend.friday && nextWeekend.saturday && nextWeekend.sunday) break;
     }
 
-    const fridayStr = getLisbonDate(targetFriday);
-    const saturdayStr = getLisbonDate(targetSaturday);
-    const sundayStr = getLisbonDate(targetSunday);
+    const fridayStr = nextWeekend.friday;
+    const saturdayStr = nextWeekend.saturday;
+    const sundayStr = nextWeekend.sunday;
+    
+    const tomorrowDate = new Date(now);
+    tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+    const tomorrowStr = getLisbonDate(tomorrowDate);
 
-    const tomorrow = new Date(lisbonNow);
-    tomorrow.setDate(lisbonNow.getDate() + 1);
-    const tomorrowStr = getLisbonDate(tomorrow);
+    // Debug
+    console.log('Lisbon Today:', todayStr);
+    console.log('Weekend dates:', { friday: fridayStr, saturday: saturdayStr, sunday: sundayStr });
 
     // 5. Filtrar por categorias
     const todayMatches = matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === todayStr);
@@ -158,10 +165,12 @@ export default async function handler(req, res) {
       .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
       .slice(0, 6);
 
-    // Debug para verificar as datas calculadas
-    console.log('Lisbon Now:', lisbonNow.toISOString(), 'Day:', currentDay);
-    console.log('Dates:', { friday: fridayStr, saturday: saturdayStr, sunday: sundayStr });
-    console.log('Weekend matches:', weekendMatches.length, '(Sat:', matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === saturdayStr).length, 'Sun:', matchesWithOdds.filter(m => getLisbonDate(m.utcDate) === sundayStr).length, ')');
+    console.log('Matches count:', {
+      today: todayMatches.length,
+      tomorrow: tomorrowMatches.length,
+      weekend: weekendMatches.length,
+      bestBets: bestBets.length
+    });
 
     res.status(200).json({
       today: todayMatches,
