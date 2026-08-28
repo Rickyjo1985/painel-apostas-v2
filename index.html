@@ -16,6 +16,7 @@
         .odd-btn { transition: all 0.2s; }
         .odd-btn:hover { transform: scale(1.05); background-color: #059669; }
         .european-badge { background: linear-gradient(135deg, #3b82f6, #1e40af); }
+        .european-card { border: 2px solid #3b82f6 !important; }
     </style>
 </head>
 <body class="bg-slate-900 text-gray-100 min-h-screen flex flex-col">
@@ -79,11 +80,11 @@
         let allMatchesData = null;
         let currentTab = 'today';
 
-        // 🌟 LIGAS EUROPEIAS (prioritárias) - detetadas por palavras-chave
+        // 🌟 LIGAS EUROPEIAS (prioritárias)
         const EUROPEAN_KEYWORDS = [
             'champions league', 'europa league', 'conference league',
             'premier league', 'la liga', 'bundesliga', 'serie a', 'ligue 1',
-            'primeira liga', 'liga portugal', 'eredivisie', 'liga portugal sabseguros',
+            'primeira liga', 'liga portugal', 'eredivisie',
             'uefa', 'copa del rey', 'fa cup', 'dfb pokal', 'coppa italia',
             'coupe de france', 'taca de portugal', 'supertaça',
             'english', 'spanish', 'german', 'italian', 'french', 'portuguese',
@@ -157,24 +158,38 @@
                     domingo: sundayMatches.length
                 });
 
-                // 🌟 ORDENAR: Ligas europeias primeiro, depois as outras
-                function sortMatches(matches) {
-                    return [...matches].sort((a, b) => {
-                        const aIsEuro = isEuropeanLeague(a.strLeague);
-                        const bIsEuro = isEuropeanLeague(b.strLeague);
-                        if (aIsEuro && !bIsEuro) return -1;
-                        if (!aIsEuro && bIsEuro) return 1;
-                        return (a.strTime || '').localeCompare(b.strTime || '');
-                    });
+                // 🌟 Separar jogos europeus e outros
+                function separateMatches(matches) {
+                    const european = matches.filter(m => isEuropeanLeague(m.strLeague));
+                    const others = matches.filter(m => !isEuropeanLeague(m.strLeague));
+                    return { european, others };
                 }
 
+                const todaySeparated = separateMatches(todayMatches);
+                const tomorrowSeparated = separateMatches(tomorrowMatches);
+                const weekendSeparated = separateMatches([...saturdayMatches, ...sundayMatches]);
                 const allWeekendMatches = [...fridayMatches, ...saturdayMatches, ...sundayMatches];
+                const weekendDaysSeparated = separateMatches(allWeekendMatches);
+
+                // 🌟 Ordenar por hora dentro de cada grupo
+                function sortByTime(matches) {
+                    return [...matches].sort((a, b) => (a.strTime || '').localeCompare(b.strTime || ''));
+                }
 
                 allMatchesData = {
-                    today: sortMatches(todayMatches),
-                    tomorrow: sortMatches(tomorrowMatches),
-                    weekend: sortMatches([...saturdayMatches, ...sundayMatches]),
-                    bestBets: sortMatches(allWeekendMatches).slice(0, 6)
+                    today: {
+                        european: sortByTime(todaySeparated.european),
+                        others: sortByTime(todaySeparated.others)
+                    },
+                    tomorrow: {
+                        european: sortByTime(tomorrowSeparated.european),
+                        others: sortByTime(tomorrowSeparated.others)
+                    },
+                    weekend: {
+                        european: sortByTime(weekendSeparated.european),
+                        others: sortByTime(weekendSeparated.others)
+                    },
+                    bestBets: sortByTime(weekendDaysSeparated.european.length > 0 ? weekendDaysSeparated.european : allWeekendMatches).slice(0, 6)
                 };
 
                 const total = todayMatches.length + tomorrowMatches.length + allWeekendMatches.length;
@@ -215,19 +230,21 @@
 
         function displayCurrentTab() {
             if (!allMatchesData) return;
-            let matches = [];
+            let data = null;
             let tabTitle = '';
 
             switch(currentTab) {
-                case 'today': matches = allMatchesData.today || []; tabTitle = 'Hoje'; break;
-                case 'tomorrow': matches = allMatchesData.tomorrow || []; tabTitle = 'Amanhã'; break;
-                case 'weekend': matches = allMatchesData.weekend || []; tabTitle = 'Fim de Semana'; break;
-                case 'bestBets': matches = allMatchesData.bestBets || []; tabTitle = 'Top 6'; break;
+                case 'today': data = allMatchesData.today; tabTitle = 'Hoje'; break;
+                case 'tomorrow': data = allMatchesData.tomorrow; tabTitle = 'Amanhã'; break;
+                case 'weekend': data = allMatchesData.weekend; tabTitle = 'Fim de Semana'; break;
+                case 'bestBets': data = { european: allMatchesData.bestBets, others: [] }; tabTitle = 'Top 6'; break;
             }
 
             document.getElementById('loading').classList.add('hidden');
 
-            if (matches.length === 0) {
+            const totalMatches = data.european.length + data.others.length;
+
+            if (totalMatches === 0) {
                 document.getElementById('matches-container').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
@@ -236,82 +253,123 @@
             }
 
             document.getElementById('error-message').classList.add('hidden');
-            displayMatches(matches, currentTab === 'bestBets');
+            displayMatches(data, currentTab === 'bestBets');
         }
 
-        function displayMatches(matches, isBestBets = false) {
+        function displayMatches(data, isBestBets = false) {
             const container = document.getElementById('matches-container');
             container.innerHTML = '';
-            const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
 
-            matchesToShow.forEach((match, index) => {
-                const time = match.strTime ? match.strTime.substring(0, 5) : '--:--';
-                const dateStr = match.dateEvent || '';
-                const dateParts = dateStr.split('-');
-                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '--';
-                
-                const isGold = isBestBets || index === 0;
-                const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
-                
-                const homeShort = match.strHomeTeam ? match.strHomeTeam.substring(0, 3).toUpperCase() : '---';
-                const awayShort = match.strAwayTeam ? match.strAwayTeam.substring(0, 3).toUpperCase() : '---';
-
-                // 🌟 Detetar se é liga europeia
-                const isEuro = isEuropeanLeague(match.strLeague);
-                const euroBadge = isEuro ? '<span class="ml-2 european-badge text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-star mr-1"></i>EUROPA</span>' : '';
-
-                const card = `
-                    <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
-                        ${isGold ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
-
-                        <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4 flex-wrap">
-                            <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.strLeague || 'Futebol'}</span>
-                            ${euroBadge}
-                            <span class="text-gray-600">•</span>
-                            <span><i class="fa-regular fa-clock mr-1"></i>${formattedDate} às ${time}</span>
-                        </div>
-
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="text-center flex-1">
-                                ${match.strHomeTeamBadge ? 
-                                    `<img src="${match.strHomeTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${homeShort}</div>'">` :
-                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${homeShort}</div>`
-                                }
-                                <p class="font-bold text-sm">${match.strHomeTeam || 'Casa'}</p>
-                            </div>
-                            <div class="text-gray-600 font-bold text-xl px-2">VS</div>
-                            <div class="text-center flex-1">
-                                ${match.strAwayTeamBadge ? 
-                                    `<img src="${match.strAwayTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${awayShort}</div>'">` :
-                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${awayShort}</div>`
-                                }
-                                <p class="font-bold text-sm">${match.strAwayTeam || 'Fora'}</p>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-900/80 rounded-xl p-4 mb-4 border border-slate-600">
-                            <div class="flex items-center justify-between mb-3">
-                                <p class="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                                    <i class="fa-solid fa-chart-bar mr-1"></i> Sugestão
-                                </p>
-                            </div>
-
-                            <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                                <div>
-                                    <p class="text-xs text-emerald-400 font-bold">Mais de 1.5 Golos</p>
-                                </div>
-                                <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">
-                                    @1.45
-                                </button>
-                            </div>
-                        </div>
+            // 🌟 Mostrar ligas europeias primeiro
+            if (data.european.length > 0) {
+                const europeanHeader = `
+                    <div class="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4 mb-4">
+                        <p class="text-blue-400 font-bold text-sm flex items-center">
+                            <i class="fa-solid fa-star mr-2"></i>
+                            LIGAS EUROPEIAS EM DESTAQUE
+                        </p>
                     </div>
                 `;
-                container.innerHTML += card;
-            });
+                container.innerHTML += europeanHeader;
+                
+                data.european.forEach((match, index) => {
+                    container.innerHTML += createMatchCard(match, true, isBestBets && index < 6 ? index + 1 : null);
+                });
+            } else if (!isBestBets) {
+                // Mensagem quando não há ligas europeias
+                const noEuroMsg = `
+                    <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-4 text-center">
+                        <p class="text-gray-400 text-sm">
+                            <i class="fa-solid fa-info-circle mr-2 text-blue-400"></i>
+                            As ligas europeias jogam normalmente ao fim de semana. Volta no sábado ou domingo!
+                        </p>
+                    </div>
+                `;
+                container.innerHTML += noEuroMsg;
+            }
+
+            // Mostrar outros jogos
+            if (data.others.length > 0) {
+                if (data.european.length > 0) {
+                    const othersHeader = `
+                        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-4 mt-6">
+                            <p class="text-gray-400 font-bold text-sm flex items-center">
+                                <i class="fa-solid fa-globe mr-2"></i>
+                                OUTRAS LIGAS
+                            </p>
+                        </div>
+                    `;
+                    container.innerHTML += othersHeader;
+                }
+                
+                data.others.forEach((match, index) => {
+                    container.innerHTML += createMatchCard(match, false, null);
+                });
+            }
 
             container.classList.remove('hidden');
+        }
+
+        function createMatchCard(match, isEuropean, betNumber = null) {
+            const time = match.strTime ? match.strTime.substring(0, 5) : '--:--';
+            const dateStr = match.dateEvent || '';
+            const dateParts = dateStr.split('-');
+            const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '--';
+            
+            const homeShort = match.strHomeTeam ? match.strHomeTeam.substring(0, 3).toUpperCase() : '---';
+            const awayShort = match.strAwayTeam ? match.strAwayTeam.substring(0, 3).toUpperCase() : '---';
+
+            const goldLabel = betNumber ? `⭐ APOSTA #${betNumber}` : (isEuropean ? '⭐ DESTAQUE' : '');
+            const cardClass = isEuropean ? 'european-card' : 'border-slate-700';
+
+            return `
+                <div class="bg-slate-800 border rounded-2xl p-5 relative ${cardClass}">
+                    ${goldLabel ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
+
+                    <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4 flex-wrap">
+                        <i class="fa-solid fa-trophy text-amber-400"></i>
+                        <span>${match.strLeague || 'Futebol'}</span>
+                        ${isEuropean ? '<span class="ml-2 european-badge text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-star mr-1"></i>EUROPA</span>' : ''}
+                        <span class="text-gray-600">•</span>
+                        <span><i class="fa-regular fa-clock mr-1"></i>${formattedDate} às ${time}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="text-center flex-1">
+                            ${match.strHomeTeamBadge ? 
+                                `<img src="${match.strHomeTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${homeShort}</div>'">` :
+                                `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${homeShort}</div>`
+                            }
+                            <p class="font-bold text-sm">${match.strHomeTeam || 'Casa'}</p>
+                        </div>
+                        <div class="text-gray-600 font-bold text-xl px-2">VS</div>
+                        <div class="text-center flex-1">
+                            ${match.strAwayTeamBadge ? 
+                                `<img src="${match.strAwayTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${awayShort}</div>'">` :
+                                `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${awayShort}</div>`
+                            }
+                            <p class="font-bold text-sm">${match.strAwayTeam || 'Fora'}</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/80 rounded-xl p-4 mb-4 border border-slate-600">
+                        <div class="flex items-center justify-between mb-3">
+                            <p class="text-xs text-amber-400 font-bold uppercase tracking-wider">
+                                <i class="fa-solid fa-chart-bar mr-1"></i> Sugestão
+                            </p>
+                        </div>
+
+                        <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                            <div>
+                                <p class="text-xs text-emerald-400 font-bold">Mais de 1.5 Golos</p>
+                            </div>
+                            <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">
+                                @1.45
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         loadMatches();
