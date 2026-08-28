@@ -15,6 +15,7 @@
         .tab-inactive:hover { color: #e2e8f0; }
         .odd-btn { transition: all 0.2s; }
         .odd-btn:hover { transform: scale(1.05); background-color: #059669; }
+        .european-badge { background: linear-gradient(135deg, #3b82f6, #1e40af); }
     </style>
 </head>
 <body class="bg-slate-900 text-gray-100 min-h-screen flex flex-col">
@@ -75,58 +76,53 @@
     </footer>
 
     <script>
-        const API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
         let allMatchesData = null;
         let currentTab = 'today';
 
-        async function fetchMatches(dateFrom, dateTo) {
+        // 🌟 LIGAS EUROPEIAS (prioritárias) - detetadas por palavras-chave
+        const EUROPEAN_KEYWORDS = [
+            'champions league', 'europa league', 'conference league',
+            'premier league', 'la liga', 'bundesliga', 'serie a', 'ligue 1',
+            'primeira liga', 'liga portugal', 'eredivisie', 'liga portugal sabseguros',
+            'uefa', 'copa del rey', 'fa cup', 'dfb pokal', 'coppa italia',
+            'coupe de france', 'taca de portugal', 'supertaça',
+            'english', 'spanish', 'german', 'italian', 'french', 'portuguese',
+            'europe', 'uefa', 'euro'
+        ];
+
+        function isEuropeanLeague(leagueName) {
+            if (!leagueName) return false;
+            const lower = leagueName.toLowerCase();
+            return EUROPEAN_KEYWORDS.some(kw => lower.includes(kw));
+        }
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        async function fetchMatchesForDate(dateStr) {
             try {
-                const url = `https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`;
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                
-                const response = await fetch(proxyUrl);
+                const url = `https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d=${dateStr}&s=Soccer`;
+                const response = await fetch(url);
                 if (!response.ok) return [];
-                
                 const data = await response.json();
-                const parsed = JSON.parse(data.contents);
-                return parsed.matches || [];
+                return data.events || [];
             } catch (e) {
-                console.error('Erro ao buscar jogos:', e);
+                console.error('Erro ao buscar jogos para', dateStr, e);
                 return [];
             }
         }
 
         async function loadMatches() {
             try {
-                console.log('🔍 A carregar jogos reais da football-data.org...');
+                console.log('🔍 A carregar jogos reais...');
 
                 const now = new Date();
-                const today = now.toISOString().split('T')[0];
+                const todayStr = formatDate(now);
                 
-                const dateTo = new Date(now);
-                dateTo.setDate(dateTo.getDate() + 10);
-                const toDate = dateTo.toISOString().split('T')[0];
-
-                const allMatches = await fetchMatches(today, toDate);
-                console.log('✅ Jogos carregados:', allMatches.length);
-
-                if (allMatches.length === 0) {
-                    showError('Sem jogos disponíveis', 'Não há jogos agendados para os próximos dias.');
-                    return;
-                }
-
-                // Filtrar apenas jogos futuros
-                const futureMatches = allMatches.filter(m => 
-                    m.status === 'SCHEDULED' || m.status === 'TIMED'
-                );
-
-                function getLisbonDate(dateString) {
-                    return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
-                }
-
-                const todayStr = getLisbonDate(now);
-                const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowStr = getLisbonDate(tomorrow);
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = formatDate(tomorrow);
 
                 const dayOfWeek = now.getDay();
                 let daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
@@ -137,41 +133,58 @@
                 if (dayOfWeek === 0) { daysUntilFriday = 5; daysUntilSaturday = 6; }
                 
                 const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
-                const fridayStr = getLisbonDate(friday);
+                const fridayStr = formatDate(friday);
                 
                 const saturday = new Date(now); saturday.setDate(saturday.getDate() + daysUntilSaturday);
-                const saturdayStr = getLisbonDate(saturday);
+                const saturdayStr = formatDate(saturday);
                 
                 const sunday = new Date(saturday); sunday.setDate(sunday.getDate() + 1);
-                const sundayStr = getLisbonDate(sunday);
+                const sundayStr = formatDate(sunday);
 
-                const todayMatches = futureMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
-                const tomorrowMatches = futureMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
-                
-                const weekendMatches = futureMatches.filter(m => {
-                    const d = getLisbonDate(m.utcDate);
-                    return d === saturdayStr || d === sundayStr;
+                const [todayMatches, tomorrowMatches, fridayMatches, saturdayMatches, sundayMatches] = await Promise.all([
+                    fetchMatchesForDate(todayStr),
+                    fetchMatchesForDate(tomorrowStr),
+                    fetchMatchesForDate(fridayStr),
+                    fetchMatchesForDate(saturdayStr),
+                    fetchMatchesForDate(sundayStr)
+                ]);
+
+                console.log('📊 Jogos encontrados:', {
+                    hoje: todayMatches.length,
+                    amanha: tomorrowMatches.length,
+                    sexta: fridayMatches.length,
+                    sabado: saturdayMatches.length,
+                    domingo: sundayMatches.length
                 });
 
-                const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC', 'EC1'];
-                const weekendDaysMatches = futureMatches.filter(m => {
-                    const d = getLisbonDate(m.utcDate);
-                    return d === fridayStr || d === saturdayStr || d === sundayStr;
-                });
+                // 🌟 ORDENAR: Ligas europeias primeiro, depois as outras
+                function sortMatches(matches) {
+                    return [...matches].sort((a, b) => {
+                        const aIsEuro = isEuropeanLeague(a.strLeague);
+                        const bIsEuro = isEuropeanLeague(b.strLeague);
+                        if (aIsEuro && !bIsEuro) return -1;
+                        if (!aIsEuro && bIsEuro) return 1;
+                        return (a.strTime || '').localeCompare(b.strTime || '');
+                    });
+                }
 
-                const bestBets = weekendDaysMatches
-                    .filter(m => topLeagues.includes(m.competition.code))
-                    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
-                    .slice(0, 6);
+                const allWeekendMatches = [...fridayMatches, ...saturdayMatches, ...sundayMatches];
 
                 allMatchesData = {
-                    today: todayMatches,
-                    tomorrow: tomorrowMatches,
-                    weekend: weekendMatches,
-                    bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6)
+                    today: sortMatches(todayMatches),
+                    tomorrow: sortMatches(tomorrowMatches),
+                    weekend: sortMatches([...saturdayMatches, ...sundayMatches]),
+                    bestBets: sortMatches(allWeekendMatches).slice(0, 6)
                 };
 
-                console.log('📊 Resumo: Hoje:', todayMatches.length, '| Amanhã:', tomorrowMatches.length, '| Fim de semana:', weekendMatches.length, '| Top 6:', bestBets.length);
+                const total = todayMatches.length + tomorrowMatches.length + allWeekendMatches.length;
+                console.log('✅ Total de jogos:', total);
+                
+                if (total === 0) {
+                    showError('Sem jogos disponíveis', 'Não há jogos de futebol agendados para os próximos dias.');
+                    return;
+                }
+
                 document.getElementById('status-text').innerText = 'Jogos Reais Atualizados Automaticamente';
                 displayCurrentTab();
 
@@ -232,36 +245,48 @@
             const matchesToShow = isBestBets ? matches.slice(0, 6) : matches.slice(0, 15);
 
             matchesToShow.forEach((match, index) => {
-                const date = new Date(match.utcDate);
-                const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-                const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const time = match.strTime ? match.strTime.substring(0, 5) : '--:--';
+                const dateStr = match.dateEvent || '';
+                const dateParts = dateStr.split('-');
+                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '--';
+                
                 const isGold = isBestBets || index === 0;
                 const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
+                
+                const homeShort = match.strHomeTeam ? match.strHomeTeam.substring(0, 3).toUpperCase() : '---';
+                const awayShort = match.strAwayTeam ? match.strAwayTeam.substring(0, 3).toUpperCase() : '---';
+
+                // 🌟 Detetar se é liga europeia
+                const isEuro = isEuropeanLeague(match.strLeague);
+                const euroBadge = isEuro ? '<span class="ml-2 european-badge text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-star mr-1"></i>EUROPA</span>' : '';
 
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
                         ${isGold ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
 
-                        <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
+                        <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4 flex-wrap">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.competition.name}</span>
+                            <span>${match.strLeague || 'Futebol'}</span>
+                            ${euroBadge}
                             <span class="text-gray-600">•</span>
-                            <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
+                            <span><i class="fa-regular fa-clock mr-1"></i>${formattedDate} às ${time}</span>
                         </div>
 
                         <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
-                                </div>
-                                <p class="font-bold text-sm">${match.homeTeam.name}</p>
+                                ${match.strHomeTeamBadge ? 
+                                    `<img src="${match.strHomeTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${homeShort}</div>'">` :
+                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${homeShort}</div>`
+                                }
+                                <p class="font-bold text-sm">${match.strHomeTeam || 'Casa'}</p>
                             </div>
                             <div class="text-gray-600 font-bold text-xl px-2">VS</div>
                             <div class="text-center flex-1">
-                                <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
-                                </div>
-                                <p class="font-bold text-sm">${match.awayTeam.name}</p>
+                                ${match.strAwayTeamBadge ? 
+                                    `<img src="${match.strAwayTeamBadge}" class="w-12 h-12 mx-auto mb-2 object-contain" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300\\'>${awayShort}</div>'">` :
+                                    `<div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">${awayShort}</div>`
+                                }
+                                <p class="font-bold text-sm">${match.strAwayTeam || 'Fora'}</p>
                             </div>
                         </div>
 
