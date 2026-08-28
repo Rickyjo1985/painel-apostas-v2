@@ -27,7 +27,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-extrabold tracking-tight text-white">PAINEL <span class="text-amber-400">PREMIUM</span></h1>
-                    <p class="text-xs text-gray-400" id="status-text">Jogos Reais Atualizados</p>
+                    <p class="text-xs text-gray-400" id="status-text">Odds Reais Atualizadas</p>
                 </div>
             </div>
             <div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20 flex items-center">
@@ -54,13 +54,13 @@
     <main class="flex-grow max-w-3xl mx-auto px-4 py-6 space-y-6 w-full">
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
-            <p class="text-gray-400">A carregar jogos reais...</p>
+            <p class="text-gray-400">A carregar jogos e odds reais...</p>
         </div>
         <div id="matches-container" class="space-y-6 hidden"></div>
         <div id="error-message" class="hidden text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
             <i class="fa-solid fa-circle-info text-4xl mb-3 text-amber-400"></i>
             <p id="error-text" class="font-bold text-lg mb-2">Sem jogos disponíveis</p>
-            <p id="error-detail" class="text-sm text-gray-500">Não há jogos disponíveis para esta categoria no momento.</p>
+            <p id="error-detail" class="text-sm text-gray-500"></p>
         </div>
     </main>
 
@@ -75,47 +75,35 @@
     </footer>
 
     <script>
-        const FOOTBALL_API_KEY = '56031cfaefbb448f836803d7b7d01c4b';
         let allMatchesData = null;
         let currentTab = 'today';
 
         async function loadMatches() {
             try {
-                console.log('🔍 A carregar jogos reais...');
+                console.log('🔍 A carregar odds reais via Serverless Function...');
                 
-                const now = new Date();
-                const today = now.toISOString().split('T')[0];
-                const dateTo = new Date(now);
-                dateTo.setDate(dateTo.getDate() + 10);
-                const toDate = dateTo.toISOString().split('T')[0];
+                // Agora chamamos a NOSSA função no Vercel, sem proxies!
+                const response = await fetch('/api/odds');
 
-                const matchesUrl = `https://api.football-data.org/v4/matches?dateFrom=${today}&dateTo=${toDate}`;
-                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(matchesUrl)}`;
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || `Erro: ${response.status}`);
+                }
 
-                const response = await fetch(proxyUrl, {
-                    headers: { 'X-Auth-Token': FOOTBALL_API_KEY }
-                });
-
-                if (!response.ok) throw new Error(`Erro: ${response.status}`);
-
-                const data = await response.json();
-                console.log('✅ Jogos carregados:', data.matches.length);
-
-                const allMatches = data.matches.filter(m => 
-                    m.status === 'SCHEDULED' || m.status === 'TIMED'
-                );
-
-                if (allMatches.length === 0) {
-                    showError('Sem jogos disponíveis', 'Não há jogos agendados para os próximos dias.');
+                const rawData = await response.json();
+                console.log('✅ Odds reais carregadas:', rawData.length, 'eventos');
+                
+                if (rawData.length === 0) {
+                    showError('Sem jogos disponíveis', 'Não há jogos com odds disponíveis no momento.');
                     return;
                 }
 
-                document.getElementById('status-text').innerText = 'Jogos Reais Atualizados Automaticamente';
-                processMatches(allMatches);
+                document.getElementById('status-text').innerText = 'Odds Reais Atualizadas Automaticamente';
+                processApiData(rawData);
 
             } catch (error) {
                 console.error('❌ Erro:', error);
-                showError('Erro ao carregar jogos', 'Não foi possível obter os dados. Tenta novamente mais tarde. Erro: ' + error.message);
+                showError('Erro ao carregar', 'Verifica a tua chave API no ficheiro api/odds.js ou tenta novamente mais tarde. (' + error.message + ')');
             }
         }
 
@@ -127,7 +115,43 @@
             document.getElementById('error-detail').innerText = detail;
         }
 
-        function processMatches(allMatches) {
+        function processApiData(rawData) {
+            const processedMatches = rawData.map(event => {
+                const preferredBookmakers = ['betclic', 'bet365', 'unibet'];
+                let oddsInfo = { homeWin: null, draw: null, awayWin: null, over25: null, bookmaker: 'Indisponível' };
+
+                for (const bkName of preferredBookmakers) {
+                    const bk = event.bookmakers?.find(b => b.key === bkName);
+                    if (bk) {
+                        oddsInfo.bookmaker = bk.title;
+                        const h2h = bk.markets?.find(m => m.key === 'h2h');
+                        if (h2h) {
+                            const home = h2h.outcomes?.find(o => o.name === event.home_team);
+                            const draw = h2h.outcomes?.find(o => o.name === 'Draw');
+                            const away = h2h.outcomes?.find(o => o.name === event.away_team);
+                            if (home) oddsInfo.homeWin = home.price;
+                            if (draw) oddsInfo.draw = draw.price;
+                            if (away) oddsInfo.awayWin = away.price;
+                        }
+                        const totals = bk.markets?.find(m => m.key === 'totals');
+                        if (totals) {
+                            const over = totals.outcomes?.find(o => o.name === 'Over' && o.point === 2.5);
+                            if (over) oddsInfo.over25 = over.price;
+                        }
+                        break;
+                    }
+                }
+
+                return {
+                    id: event.id,
+                    league: event.sport_title,
+                    homeTeam: { name: event.home_team, shortName: event.home_team.substring(0, 3).toUpperCase() },
+                    awayTeam: { name: event.away_team, shortName: event.away_team.substring(0, 3).toUpperCase() },
+                    utcDate: event.commence_time,
+                    odds: oddsInfo
+                };
+            }).filter(m => m.odds.homeWin !== null);
+
             function getLisbonDate(dateString) {
                 return new Date(dateString).toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }).split(',')[0];
             }
@@ -147,21 +171,21 @@
             const friday = new Date(now); friday.setDate(friday.getDate() + daysUntilFriday);
             const fridayStr = getLisbonDate(friday);
 
-            const todayMatches = allMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
-            const tomorrowMatches = allMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
-            const weekendMatches = allMatches.filter(m => {
+            const todayMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === todayStr);
+            const tomorrowMatches = processedMatches.filter(m => getLisbonDate(m.utcDate) === tomorrowStr);
+            const weekendMatches = processedMatches.filter(m => {
                 const d = getLisbonDate(m.utcDate);
                 return d === saturdayStr || d === sundayStr;
             });
 
-            const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC'];
-            const weekendDaysMatches = allMatches.filter(m => {
+            const topLeaguesKeywords = ['EPL', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Primeira Liga', 'Champions League'];
+            const weekendDaysMatches = processedMatches.filter(m => {
                 const d = getLisbonDate(m.utcDate);
                 return d === fridayStr || d === saturdayStr || d === sundayStr;
             });
 
             const bestBets = weekendDaysMatches
-                .filter(m => topLeagues.includes(m.competition.code))
+                .filter(m => topLeaguesKeywords.some(kw => m.league.includes(kw)))
                 .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
                 .slice(0, 6);
 
@@ -205,7 +229,7 @@
                 document.getElementById('matches-container').classList.add('hidden');
                 document.getElementById('error-message').classList.remove('hidden');
                 document.getElementById('error-text').innerText = `Sem jogos para "${tabTitle}"`;
-                document.getElementById('error-detail').innerText = 'Não há jogos agendados para esta categoria no momento.';
+                document.getElementById('error-detail').innerText = 'Não há jogos com odds disponíveis para esta categoria no momento.';
                 return;
             }
 
@@ -225,13 +249,20 @@
                 const isGold = isBestBets || index === 0;
                 const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
 
+                const odds = match.odds;
+                const homeOdd = odds?.homeWin ? odds.homeWin.toFixed(2) : '-';
+                const drawOdd = odds?.draw ? odds.draw.toFixed(2) : '-';
+                const awayOdd = odds?.awayWin ? odds.awayWin.toFixed(2) : '-';
+                const over25Odd = odds?.over25 ? odds.over25.toFixed(2) : '-';
+                const bookmakerName = odds?.bookmaker || 'Indisponível';
+
                 const card = `
                     <div class="bg-slate-800 border rounded-2xl p-5 relative ${isGold ? 'border-amber-400/30 gold-glow' : 'border-slate-700'}">
                         ${isGold ? `<div class="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">${goldLabel}</div>` : ''}
 
                         <div class="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
                             <i class="fa-solid fa-trophy text-amber-400"></i>
-                            <span>${match.competition.name}</span>
+                            <span>${match.league}</span>
                             <span class="text-gray-600">•</span>
                             <span><i class="fa-regular fa-clock mr-1"></i>${dateStr} às ${time}</span>
                         </div>
@@ -239,14 +270,14 @@
                         <div class="flex items-center justify-between mb-4">
                             <div class="text-center flex-1">
                                 <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.homeTeam.shortName || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                                    ${match.homeTeam.shortName}
                                 </div>
                                 <p class="font-bold text-sm">${match.homeTeam.name}</p>
                             </div>
                             <div class="text-gray-600 font-bold text-xl px-2">VS</div>
                             <div class="text-center flex-1">
                                 <div class="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                                    ${match.awayTeam.shortName || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                                    ${match.awayTeam.shortName}
                                 </div>
                                 <p class="font-bold text-sm">${match.awayTeam.name}</p>
                             </div>
@@ -255,16 +286,32 @@
                         <div class="bg-slate-900/80 rounded-xl p-4 mb-4 border border-slate-600">
                             <div class="flex items-center justify-between mb-3">
                                 <p class="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                                    <i class="fa-solid fa-chart-bar mr-1"></i> Sugestão
+                                    <i class="fa-solid fa-chart-bar mr-1"></i> Odds Reais
                                 </p>
+                                <span class="text-xs text-gray-500 bg-slate-700 px-2 py-0.5 rounded-full">${bookmakerName}</span>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Casa</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${homeOdd}</p>
+                                </button>
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Empate</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${drawOdd}</p>
+                                </button>
+                                <button class="odd-btn bg-slate-700 hover:bg-emerald-600 rounded-lg p-2 text-center border border-slate-600">
+                                    <p class="text-[10px] text-gray-400 uppercase">Fora</p>
+                                    <p class="text-emerald-400 font-extrabold text-lg">${awayOdd}</p>
+                                </button>
                             </div>
 
                             <div class="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
                                 <div>
-                                    <p class="text-xs text-emerald-400 font-bold">Mais de 1.5 Golos</p>
+                                    <p class="text-xs text-emerald-400 font-bold">Mais de 2.5 Golos</p>
                                 </div>
                                 <button class="odd-btn bg-emerald-500 text-slate-900 font-extrabold text-lg px-4 py-1.5 rounded-lg">
-                                    @1.45
+                                    ${over25Odd}
                                 </button>
                             </div>
                         </div>
