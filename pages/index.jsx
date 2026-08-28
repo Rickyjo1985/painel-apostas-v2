@@ -17,9 +17,12 @@ export default function Home() {
       if (!response.ok) throw new Error('Erro ao carregar');
       
       const data = await response.json();
-      setAllMatchesData(data);
       
-      const total = data.today.length + data.tomorrow.length + data.weekend.length;
+      // Processar dados no frontend
+      const processed = processData(data);
+      setAllMatchesData(processed);
+      
+      const total = processed.today.length + processed.tomorrow.length + processed.weekend.length;
       setStatusText(`${total} jogos carregados`);
       setLoading(false);
     } catch (error) {
@@ -27,6 +30,56 @@ export default function Home() {
       setStatusText('Erro ao carregar');
       setLoading(false);
     }
+  }
+
+  function processData(data) {
+    const today = data.today;
+    const allMatches = data.allMatches;
+    
+    // Calcular datas em Lisboa no frontend
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(now);
+    
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(tomorrow);
+    
+    // Encontrar sexta, sábado e domingo
+    let fridayStr = null, saturdayStr = null, sundayStr = null;
+    for (let i = 0; i < 10; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      const dayOfWeek = d.getDay();
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(d);
+      
+      if (dayOfWeek === 5 && !fridayStr) fridayStr = dateStr;
+      if (dayOfWeek === 6 && !saturdayStr) saturdayStr = dateStr;
+      if (dayOfWeek === 0 && !sundayStr) sundayStr = dateStr;
+      
+      if (fridayStr && saturdayStr && sundayStr) break;
+    }
+    
+    // Filtrar jogos por categoria
+    const todayMatches = allMatches.filter(m => m.lisbonDate === todayStr);
+    const tomorrowMatches = allMatches.filter(m => m.lisbonDate === tomorrowStr);
+    const weekendMatches = allMatches.filter(m => m.lisbonDate === saturdayStr || m.lisbonDate === sundayStr);
+    
+    const topLeagues = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'PPL', 'CL', 'EC'];
+    const weekendDaysMatches = allMatches.filter(m => 
+      m.lisbonDate === fridayStr || m.lisbonDate === saturdayStr || m.lisbonDate === sundayStr
+    );
+    
+    const bestBets = weekendDaysMatches
+      .filter(m => topLeagues.includes(m.competition.code))
+      .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
+      .slice(0, 6);
+    
+    return {
+      today: todayMatches,
+      tomorrow: tomorrowMatches,
+      weekend: weekendMatches,
+      bestBets: bestBets.length > 0 ? bestBets : weekendDaysMatches.slice(0, 6)
+    };
   }
 
   function switchTab(tabName) {
@@ -65,8 +118,8 @@ export default function Home() {
       <div className="space-y-6">
         {matchesToShow.map((match, index) => {
           const date = new Date(match.utcDate);
-          const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-          const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const time = date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Lisbon' });
+          const dateStr = date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Lisbon' });
           const isGold = isBestBets || index === 0;
           const goldLabel = isBestBets ? `⭐ APOSTA #${index + 1}` : '⭐ JOGO DE OURO';
 
