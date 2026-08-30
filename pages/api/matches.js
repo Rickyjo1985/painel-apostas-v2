@@ -1,7 +1,62 @@
 const FOOTBALL_API_KEY =
   process.env.FOOTBALL_DATA_API_KEY;
 
-export default async function handler(req, res) {
+function getDateUTC(offset) {
+  const date = new Date();
+
+  date.setUTCDate(
+    date.getUTCDate() + offset
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+async function getMatchesForDate(date) {
+  const url =
+    "https://api.football-data.org/v4/matches?date=" +
+    date;
+
+  const response =
+    await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Auth-Token":
+          FOOTBALL_API_KEY,
+        Accept:
+          "application/json"
+      }
+    });
+
+  const data =
+    await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      JSON.stringify({
+        message:
+          data?.message ||
+          "Erro na football-data.org",
+        errorCode:
+          data?.errorCode ||
+          response.status,
+        date: date
+      })
+    );
+  }
+
+  return Array.isArray(
+    data?.matches
+  )
+    ? data.matches
+    : [];
+}
+
+export default async function handler(
+  req,
+  res
+) {
   if (!FOOTBALL_API_KEY) {
     return res.status(500).json({
       error:
@@ -10,95 +65,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const now = new Date();
+    const dates = [
+      getDateUTC(0),
+      getDateUTC(1),
+      getDateUTC(2),
+      getDateUTC(3),
+      getDateUTC(4),
+      getDateUTC(5),
+      getDateUTC(6)
+    ];
 
-    // Data de hoje em UTC
-    const dateFrom =
-      now.toISOString().slice(0, 10);
-
-    // Pedimos apenas mais 6 dias.
-    // Assim o período total fica dentro do
-    // limite de 10 dias da football-data.org.
-    const dateToObject =
-      new Date(now);
-
-    dateToObject.setUTCDate(
-      dateToObject.getUTCDate() + 6
-    );
-
-    const dateTo =
-      dateToObject
-        .toISOString()
-        .slice(0, 10);
-
-    const params =
-      new URLSearchParams();
-
-    params.set(
-      "dateFrom",
-      dateFrom
-    );
-
-    params.set(
-      "dateTo",
-      dateTo
-    );
-
-    params.set(
-      "status",
-      "SCHEDULED,TIMED"
-    );
-
-    const url =
-      "https://api.football-data.org/v4/matches?" +
-      params.toString();
-
-    console.log(
-      "Football-data.org período:",
-      dateFrom,
-      "até",
-      dateTo
-    );
-
-    const response =
-      await fetch(url, {
-        method: "GET",
-        headers: {
-          "X-Auth-Token":
-            FOOTBALL_API_KEY,
-          Accept:
-            "application/json"
-        }
-      });
-
-    const data =
-      await response.json();
-
-    if (!response.ok) {
-      console.error(
-        "Football-data.org:",
-        response.status,
-        data
+    const results =
+      await Promise.all(
+        dates.map(function (date) {
+          return getMatchesForDate(
+            date
+          );
+        })
       );
 
-      return res.status(
-        response.status
-      ).json({
-        error:
-          data?.message ||
-          "Erro na football-data.org",
-        errorCode:
-          data?.errorCode ||
-          response.status
-      });
-    }
-
     const matches =
-      Array.isArray(
-        data?.matches
-      )
-        ? data.matches
-        : [];
+      results.flat();
 
     res.setHeader(
       "Cache-Control",
@@ -110,14 +97,14 @@ export default async function handler(req, res) {
     );
   } catch (error) {
     console.error(
-      "Erro interno em /api/matches:",
+      "Erro em /api/matches:",
       error
     );
 
     return res.status(500).json({
       error:
         error.message ||
-        "Erro interno ao obter jogos."
+        "Erro ao obter jogos."
     });
   }
 }
