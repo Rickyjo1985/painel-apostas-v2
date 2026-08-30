@@ -11,22 +11,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url =
-      'https://api.football-data.org/v4/matches';
-
-    console.log(
-      'A chamar football-data.org:',
-      url
-    );
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-Auth-Token':
-          FOOTBALL_API_KEY,
-        Accept: 'application/json'
+    // Pedimos apenas os jogos de hoje.
+    // Depois podemos expandir, mantendo sempre
+    // o intervalo dentro do limite da API.
+    const response = await fetch(
+      'https://api.football-data.org/v4/matches',
+      {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': FOOTBALL_API_KEY,
+          Accept: 'application/json'
+        }
       }
-    });
+    );
 
     const data =
       await response.json().catch(
@@ -56,27 +53,16 @@ export default async function handler(req, res) {
         ? data.matches
         : [];
 
-    /*
-     * Devolvemos apenas jogos futuros/agendados.
-     */
     const now = new Date();
 
     const futureMatches =
       matches.filter((match) => {
-        const status =
-          match.status;
-
-        const isScheduled =
-          status === 'SCHEDULED' ||
-          status === 'TIMED';
-
         const matchDate =
-          new Date(
-            match.utcDate
-          );
+          new Date(match.utcDate);
 
         return (
-          isScheduled &&
+          (match.status === 'SCHEDULED' ||
+            match.status === 'TIMED') &&
           matchDate >= now
         );
       });
