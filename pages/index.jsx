@@ -1,317 +1,757 @@
-import { useState, useEffect } from 'react';
+```jsx
+import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 
+const TOP_LEAGUES = [
+  'PL',
+  'PD',
+  'BL1',
+  'SA',
+  'FL1',
+  'PPL',
+  'CL',
+  'EL',
+  'ECL'
+];
+
+function getLocalDate(dateString) {
+  const date = new Date(dateString);
+
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, '0');
+  const day = String(
+    date.getDate()
+  ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(
+    result.getDate() + days
+  );
+  return result;
+}
+
+function getWeekendDates() {
+  const today = new Date();
+
+  let saturday = null;
+  let sunday = null;
+
+  for (let i = 0; i < 10; i++) {
+    const date = addDays(today, i);
+
+    if (
+      date.getDay() === 6 &&
+      !saturday
+    ) {
+      saturday = getLocalDate(date);
+    }
+
+    if (
+      date.getDay() === 0 &&
+      !sunday
+    ) {
+      sunday = getLocalDate(date);
+    }
+
+    if (saturday && sunday) {
+      break;
+    }
+  }
+
+  return {
+    saturday,
+    sunday
+  };
+}
+
+function formatTime(dateString) {
+  return new Date(
+    dateString
+  ).toLocaleTimeString(
+    'pt-PT',
+    {
+      hour: '2-digit',
+      minute: '2-digit'
+    }
+  );
+}
+
+function formatDate(dateString) {
+  return new Date(
+    dateString
+  ).toLocaleDateString(
+    'pt-PT',
+    {
+      day: '2-digit',
+      month: '2-digit'
+    }
+  );
+}
+
+function getMatchKey(
+  homeTeam,
+  awayTeam
+) {
+  const normalize = (name = '') =>
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      )
+      .replace(
+        /\b(fc|cf|sc|ac|afc|club|football|clube)\b/g,
+        ''
+      )
+      .replace(
+        /[^a-z0-9\s]/g,
+        ' '
+      )
+      .replace(
+        /\s+/g,
+        ' '
+      )
+      .trim();
+
+  return `${normalize(
+    homeTeam
+  )}__${normalize(awayTeam)}`;
+}
+
+function findOddsForMatch(
+  match,
+  odds
+) {
+  const exactKey = getMatchKey(
+    match.homeTeam?.name,
+    match.awayTeam?.name
+  );
+
+  if (odds[exactKey]) {
+    return odds[exactKey];
+  }
+
+  /*
+   * Fallback: procuramos por nomes das equipas.
+   * Isto ajuda quando as duas APIs usam pequenas
+   * diferenças no nome da equipa.
+   */
+  const normalize = (name = '') =>
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      )
+      .replace(
+        /\b(fc|cf|sc|ac|afc|club|football|clube)\b/g,
+        ''
+      )
+      .replace(
+        /[^a-z0-9\s]/g,
+        ' '
+      )
+      .replace(
+        /\s+/g,
+        ' '
+      )
+      .trim();
+
+  const home = normalize(
+    match.homeTeam?.name
+  );
+
+  const away = normalize(
+    match.awayTeam?.name
+  );
+
+  const candidates = Object.values(
+    odds
+  );
+
+  return (
+    candidates.find((item) => {
+      const oddsHome = normalize(
+        item.homeTeam
+      );
+
+      const oddsAway = normalize(
+        item.awayTeam
+      );
+
+      const homeMatch =
+        oddsHome === home ||
+        oddsHome.includes(home) ||
+        home.includes(oddsHome);
+
+      const awayMatch =
+        oddsAway === away ||
+        oddsAway.includes(away) ||
+        away.includes(oddsAway);
+
+      if (!homeMatch || !awayMatch) {
+        return false;
+      }
+
+      /*
+       * Também confirmamos o horário.
+       */
+      const matchTime =
+        new Date(
+          match.utcDate
+        ).getTime();
+
+      const oddsTime =
+        new Date(
+          item.commenceTime
+        ).getTime();
+
+      if (
+        Number.isNaN(matchTime) ||
+        Number.isNaN(oddsTime)
+      ) {
+        return true;
+      }
+
+      const difference =
+        Math.abs(
+          matchTime - oddsTime
+        ) /
+        (1000 * 60 * 60);
+
+      return difference <= 6;
+    }) || null
+  );
+}
+
+function MatchCard({
+  match,
+  oddsData,
+  index,
+  isTopBet
+}) {
+  const matchOdds =
+    findOddsForMatch(
+      match,
+      oddsData
+    );
+
+  const over15 =
+    matchOdds?.over15 || null;
+
+  const price =
+    over15?.price;
+
+  return (
+    <div
+      className={`bg-slate-800 border rounded-2xl p-5 relative ${
+        isTopBet
+          ? 'border-amber-400/40 shadow-lg shadow-amber-400/5'
+          : 'border-slate-700'
+      }`}
+    >
+      {isTopBet && (
+        <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">
+          ⭐ APOSTA #{index + 1}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4 pr-20">
+        <i className="fa-solid fa-trophy text-amber-400"></i>
+
+        <span>
+          {match.competition?.name ||
+            'Competição'}
+        </span>
+
+        <span className="text-gray-600">
+          •
+        </span>
+
+        <span>
+          <i className="fa-regular fa-clock mr-1"></i>
+
+          {formatDate(
+            match.utcDate
+          )}
+
+          {' às '}
+
+          {formatTime(
+            match.utcDate
+          )}
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between mb-5">
+        <div className="text-center flex-1">
+          <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+            {match.homeTeam?.shortName ||
+              match.homeTeam?.name
+                ?.substring(0, 3)
+                .toUpperCase()}
+          </div>
+
+          <p className="font-bold text-sm">
+            {match.homeTeam?.name}
+          </p>
+        </div>
+
+        <div className="text-gray-600 font-bold text-xl px-2">
+          VS
+        </div>
+
+        <div className="text-center flex-1">
+          <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
+            {match.awayTeam?.shortName ||
+              match.awayTeam?.name
+                ?.substring(0, 3)
+                .toUpperCase()}
+          </div>
+
+          <p className="font-bold text-sm">
+            {match.awayTeam?.name}
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-600">
+        <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+          <div>
+            <p className="text-xs text-emerald-400 font-bold">
+              MAIS DE 1.5 GOLOS
+            </p>
+
+            {over15?.bookmaker && (
+              <p className="text-[11px] text-gray-500 mt-1">
+                {over15.bookmaker}
+              </p>
+            )}
+          </div>
+
+          {price ? (
+            <div className="bg-emerald-500 text-slate-950 font-extrabold text-lg px-4 py-2 rounded-lg">
+              @{price.toFixed(2)}
+            </div>
+          ) : (
+            <div className="bg-slate-700 text-gray-400 font-bold text-xs px-3 py-2 rounded-lg text-center">
+              Odd indisponível
+            </div>
+          )}
+        </div>
+
+        {over15?.alternatives?.length > 1 && (
+          <div className="mt-3">
+            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
+              Outras odds
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {over15.alternatives
+                .slice(1, 4)
+                .map(
+                  (alternative) => (
+                    <span
+                      key={`${alternative.bookmakerKey}-${alternative.price}`}
+                      className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
+                    >
+                      {alternative.bookmaker}: @
+                      {alternative.price.toFixed(
+                        2
+                      )}
+                    </span>
+                  )
+                )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
-  const [matchesData, setMatchesData] = useState(null);
-  const [currentTab, setCurrentTab] = useState('today');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [
+    matches,
+    setMatches
+  ] = useState([]);
 
-  useEffect(() => {
-    loadMatches();
-  }, []);
+  const [
+    odds,
+    setOdds
+  ] = useState({});
 
-  async function loadMatches() {
+  const [
+    currentTab,
+    setCurrentTab
+  ] = useState('today');
+
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
+
+  const [
+    error,
+    setError
+  ] = useState(null);
+
+  const [
+    lastUpdate,
+    setLastUpdate
+  ] = useState(null);
+
+  async function loadData() {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/matches');
+      /*
+       * Primeiro buscamos os jogos.
+       */
+      const matchesResponse =
+        await fetch(
+          '/api/matches',
+          {
+            cache: 'no-store'
+          }
+        );
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Erro ao carregar jogos');
+      if (!matchesResponse.ok) {
+        const data =
+          await matchesResponse
+            .json()
+            .catch(
+              () => ({})
+            );
+
+        throw new Error(
+          data.error ||
+            'Erro ao carregar jogos.'
+        );
       }
 
-      const allMatches = await response.json();
+      const matchesData =
+        await matchesResponse.json();
 
-      // Apenas jogos ainda não terminados
-      const futureMatches = allMatches.filter(
-        (match) =>
-          match.status === 'SCHEDULED' ||
-          match.status === 'TIMED'
+      const allMatches =
+        Array.isArray(
+          matchesData
+        )
+          ? matchesData
+          : [];
+
+      /*
+       * Só precisamos de jogos agendados.
+       */
+      const futureMatches =
+        allMatches
+          .filter(
+            (match) =>
+              match.status ===
+                'SCHEDULED' ||
+              match.status ===
+                'TIMED'
+          )
+          .sort(
+            (a, b) =>
+              new Date(
+                a.utcDate
+              ) -
+              new Date(
+                b.utcDate
+              )
+          );
+
+      setMatches(
+        futureMatches
       );
 
-      // Data local de Portugal/browser
-      const getLocalDate = (date) => {
-        const d = new Date(date);
-
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-
-        return `${year}-${month}-${day}`;
-      };
-
-      const today = new Date();
-
-      const addDays = (date, days) => {
-        const result = new Date(date);
-        result.setDate(result.getDate() + days);
-        return result;
-      };
-
-      const todayStr = getLocalDate(today);
-      const tomorrowStr = getLocalDate(addDays(today, 1));
-
-      // Próximo sábado e domingo
-      let saturdayStr = null;
-      let sundayStr = null;
-
-      for (let i = 0; i < 10; i++) {
-        const date = addDays(today, i);
-        const day = date.getDay();
-        const dateStr = getLocalDate(date);
-
-        if (day === 6 && !saturdayStr) {
-          saturdayStr = dateStr;
-        }
-
-        if (day === 0 && !sundayStr) {
-          sundayStr = dateStr;
-        }
-
-        if (saturdayStr && sundayStr) break;
-      }
-
-      const todayMatches = futureMatches
-        .filter((match) => getLocalDate(match.utcDate) === todayStr)
-        .sort(
-          (a, b) =>
-            new Date(a.utcDate) - new Date(b.utcDate)
-        );
-
-      const tomorrowMatches = futureMatches
-        .filter(
-          (match) => getLocalDate(match.utcDate) === tomorrowStr
+      /*
+       * Descobrimos quais competições estão
+       * realmente presentes nos jogos.
+       *
+       * Isto evita pedir odds de competições
+       * que não aparecem no painel.
+       */
+      const competitions = [
+        ...new Set(
+          futureMatches
+            .map(
+              (match) =>
+                match.competition
+                  ?.code
+            )
+            .filter((code) =>
+              TOP_LEAGUES.includes(
+                code
+              )
+            )
         )
-        .sort(
-          (a, b) =>
-            new Date(a.utcDate) - new Date(b.utcDate)
-        );
-
-      const weekendMatches = futureMatches
-        .filter((match) => {
-          const date = getLocalDate(match.utcDate);
-
-          return (
-            date === saturdayStr ||
-            date === sundayStr
-          );
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.utcDate) - new Date(b.utcDate)
-        );
-
-      const topLeagues = [
-        'PL',
-        'PD',
-        'BL1',
-        'SA',
-        'FL1',
-        'PPL',
-        'CL',
-        'EC'
       ];
 
-      const weekendDaysMatches = futureMatches.filter((match) => {
-        const date = getLocalDate(match.utcDate);
+      /*
+       * Depois pedimos as odds.
+       */
+      if (
+        competitions.length > 0
+      ) {
+        const oddsResponse =
+          await fetch(
+            `/api/odds?competitions=${encodeURIComponent(
+              competitions.join(',')
+            )}`,
+            {
+              cache: 'no-store'
+            }
+          );
 
-        return (
-          date === saturdayStr ||
-          date === sundayStr
+        if (!oddsResponse.ok) {
+          const data =
+            await oddsResponse
+              .json()
+              .catch(
+                () => ({})
+              );
+
+          throw new Error(
+            data.error ||
+              'Erro ao carregar odds.'
+          );
+        }
+
+        const oddsData =
+          await oddsResponse.json();
+
+        setOdds(
+          oddsData.odds || {}
         );
-      });
 
-      const bestBets = weekendDaysMatches
-        .filter((match) =>
-          topLeagues.includes(match.competition?.code)
-        )
-        .sort(
-          (a, b) =>
-            new Date(a.utcDate) - new Date(b.utcDate)
-        )
-        .slice(0, 6);
+        setLastUpdate(
+          oddsData.meta
+            ?.updatedAt ||
+            new Date().toISOString()
+        );
+      } else {
+        setOdds({});
+      }
+    } catch (err) {
+      console.error(
+        'Erro:',
+        err
+      );
 
-      setMatchesData({
-        today: todayMatches,
-        tomorrow: tomorrowMatches,
-        weekend: weekendMatches,
-        bestBets:
-          bestBets.length > 0
-            ? bestBets
-            : weekendDaysMatches.slice(0, 6)
-      });
-    } catch (error) {
-      console.error('Erro:', error);
-      setError(error.message);
+      setError(
+        err.message ||
+          'Erro ao carregar dados.'
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  function displayCurrentTab() {
-    if (!matchesData) return null;
+  useEffect(() => {
+    loadData();
 
-    let matches = [];
-    let tabTitle = '';
-
-    switch (currentTab) {
-      case 'today':
-        matches = matchesData.today;
-        tabTitle = 'Hoje';
-        break;
-
-      case 'tomorrow':
-        matches = matchesData.tomorrow;
-        tabTitle = 'Amanhã';
-        break;
-
-      case 'weekend':
-        matches = matchesData.weekend;
-        tabTitle = 'Fim de Semana';
-        break;
-
-      case 'bestBets':
-        matches = matchesData.bestBets;
-        tabTitle = 'Top 6';
-        break;
-    }
-
-    if (matches.length === 0) {
-      return (
-        <div className="text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
-          <p className="font-bold text-lg mb-2">
-            Sem jogos para "{tabTitle}"
-          </p>
-        </div>
+    /*
+     * Actualiza automaticamente a cada 5 minutos.
+     */
+    const interval =
+      setInterval(
+        loadData,
+        5 * 60 * 1000
       );
-    }
 
-    return (
-      <div className="space-y-6">
-        {matches
-          .slice(
-            0,
-            currentTab === 'bestBets' ? 6 : 15
+    return () =>
+      clearInterval(
+        interval
+      );
+  }, []);
+
+  const groupedMatches =
+    useMemo(() => {
+      const today =
+        new Date();
+
+      const todayStr =
+        getLocalDate(
+          today
+        );
+
+      const tomorrowStr =
+        getLocalDate(
+          addDays(
+            today,
+            1
           )
-          .map((match, index) => {
-            const date = new Date(match.utcDate);
+        );
 
-            const time = date.toLocaleTimeString(
-              'pt-PT',
-              {
-                hour: '2-digit',
-                minute: '2-digit'
-              }
-            );
+      const {
+        saturday,
+        sunday
+      } =
+        getWeekendDates();
 
-            const dateStr = date.toLocaleDateString(
-              'pt-PT',
-              {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-              }
-            );
+      const todayMatches =
+        matches.filter(
+          (match) =>
+            getLocalDate(
+              match.utcDate
+            ) ===
+            todayStr
+        );
 
-            const isGold =
-              currentTab === 'bestBets' ||
-              index === 0;
+      const tomorrowMatches =
+        matches.filter(
+          (match) =>
+            getLocalDate(
+              match.utcDate
+            ) ===
+            tomorrowStr
+        );
 
-            const goldLabel =
-              currentTab === 'bestBets'
-                ? `⭐ APOSTA #${index + 1}`
-                : '⭐ JOGO DE OURO';
+      const weekendMatches =
+        matches.filter(
+          (match) => {
+            const date =
+              getLocalDate(
+                match.utcDate
+              );
 
             return (
-              <div
-                key={match.id || index}
-                className={`bg-slate-800 border rounded-2xl p-5 relative ${
-                  isGold
-                    ? 'border-amber-400/30'
-                    : 'border-slate-700'
-                }`}
-              >
-                {isGold && (
-                  <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 text-xs font-extrabold px-3 py-1 rounded-bl-lg rounded-tr-2xl">
-                    {goldLabel}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-4">
-                  <i className="fa-solid fa-trophy text-amber-400"></i>
-
-                  <span>
-                    {match.competition?.name ||
-                      'Competição'}
-                  </span>
-
-                  <span className="text-gray-600">
-                    •
-                  </span>
-
-                  <span>
-                    <i className="fa-regular fa-clock mr-1"></i>
-                    {dateStr} às {time}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-center flex-1">
-                    <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                      {match.homeTeam?.shortName ||
-                        match.homeTeam?.name
-                          ?.substring(0, 3)
-                          .toUpperCase()}
-                    </div>
-
-                    <p className="font-bold text-sm">
-                      {match.homeTeam?.name}
-                    </p>
-                  </div>
-
-                  <div className="text-gray-600 font-bold text-xl px-2">
-                    VS
-                  </div>
-
-                  <div className="text-center flex-1">
-                    <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
-                      {match.awayTeam?.shortName ||
-                        match.awayTeam?.name
-                          ?.substring(0, 3)
-                          .toUpperCase()}
-                    </div>
-
-                    <p className="font-bold text-sm">
-                      {match.awayTeam?.name}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-600">
-                  <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                    <p className="text-xs text-emerald-400 font-bold">
-                      Mais de 1.5 Golos
-                    </p>
-
-                    <div className="bg-slate-700 text-gray-300 font-bold text-sm px-3 py-2 rounded-lg">
-                      Odd indisponível
-                    </div>
-                  </div>
-                </div>
-              </div>
+              date ===
+                saturday ||
+              date ===
+                sunday
             );
-          })}
-      </div>
-    );
+          }
+        );
+
+      /*
+       * Para o Top 6:
+       * - apenas competições principais;
+       * - preferimos jogos que tenham Over 1.5;
+       * - depois ordenamos pela odd disponível.
+       */
+      const weekendTop =
+        weekendMatches
+          .filter((match) =>
+            TOP_LEAGUES.includes(
+              match.competition
+                ?.code
+            )
+          )
+          .map((match) => ({
+            match,
+            oddsData:
+              findOddsForMatch(
+                match,
+                odds
+              )
+          }))
+          .sort(
+            (a, b) => {
+              const priceA =
+                a.oddsData
+                  ?.over15
+                  ?.price ||
+                0;
+
+              const priceB =
+                b.oddsData
+                  ?.over15
+                  ?.price ||
+                0;
+
+              /*
+               * Primeiro os jogos com odd.
+               * Entre eles, maior odd primeiro.
+               */
+              if (
+                priceA > 0 &&
+                priceB === 0
+              ) {
+                return -1;
+              }
+
+              if (
+                priceA === 0 &&
+                priceB > 0
+              ) {
+                return 1;
+              }
+
+              return (
+                priceB -
+                priceA
+              );
+            }
+          )
+          .slice(0, 6)
+          .map(
+            (item) =>
+              item.match
+          );
+
+      return {
+        today: todayMatches,
+        tomorrow:
+          tomorrowMatches,
+        weekend:
+          weekendMatches,
+        bestBets:
+          weekendTop.length > 0
+            ? weekendTop
+            : weekendMatches.slice(
+                0,
+                6
+              )
+      };
+    }, [matches, odds]);
+
+  function getCurrentMatches() {
+    switch (
+      currentTab
+    ) {
+      case 'today':
+        return groupedMatches.today;
+
+      case 'tomorrow':
+        return groupedMatches.tomorrow;
+
+      case 'weekend':
+        return groupedMatches.weekend;
+
+      case 'bestBets':
+        return groupedMatches.bestBets;
+
+      default:
+        return [];
+    }
   }
+
+  const currentMatches =
+    getCurrentMatches();
 
   return (
     <>
       <Head>
-        <title>Painel Apostas Premium</title>
+        <title>
+          Painel Apostas Premium
+        </title>
+
+        <meta
+          name="description"
+          content="Painel de jogos e odds de futebol"
+        />
 
         <link
           rel="stylesheet"
@@ -329,7 +769,8 @@ export default function Home() {
       <div
         className="bg-slate-900 text-gray-100 min-h-screen flex flex-col"
         style={{
-          fontFamily: 'Inter, sans-serif'
+          fontFamily:
+            'Inter, sans-serif'
         }}
       >
         <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
@@ -339,20 +780,35 @@ export default function Home() {
                 <i className="fa-solid fa-crown text-xl"></i>
               </div>
 
-              <h1 className="text-xl font-extrabold tracking-tight text-white">
-                PAINEL{' '}
-                <span className="text-amber-400">
-                  PREMIUM
-                </span>
-              </h1>
+              <div>
+                <h1 className="text-xl font-extrabold tracking-tight text-white">
+                  PAINEL{' '}
+                  <span className="text-amber-400">
+                    PREMIUM
+                  </span>
+                </h1>
+
+                {lastUpdate && (
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Odds actualizadas automaticamente
+                  </p>
+                )}
+              </div>
             </div>
 
             <button
-              onClick={loadMatches}
-              className="text-gray-300 hover:text-white text-sm"
-              title="Actualizar jogos"
+              onClick={loadData}
+              disabled={loading}
+              className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
+              title="Actualizar jogos e odds"
             >
-              <i className="fa-solid fa-rotate-right"></i>
+              <i
+                className={`fa-solid fa-rotate-right ${
+                  loading
+                    ? 'animate-spin'
+                    : ''
+                }`}
+              ></i>
             </button>
           </div>
         </header>
@@ -361,31 +817,42 @@ export default function Home() {
           <div className="max-w-3xl mx-auto px-4">
             <div className="flex overflow-x-auto gap-6">
               {[
-                'today',
-                'tomorrow',
-                'weekend',
-                'bestBets'
-              ].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() =>
-                    setCurrentTab(tab)
-                  }
-                  className={`py-4 px-1 text-sm whitespace-nowrap ${
-                    currentTab === tab
-                      ? 'border-b-2 border-amber-400 text-amber-400 font-bold'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  {tab === 'today'
-                    ? 'Hoje'
-                    : tab === 'tomorrow'
-                    ? 'Amanhã'
-                    : tab === 'weekend'
-                    ? 'Fim de Semana'
-                    : '⭐ Top 6'}
-                </button>
-              ))}
+                [
+                  'today',
+                  'Hoje'
+                ],
+                [
+                  'tomorrow',
+                  'Amanhã'
+                ],
+                [
+                  'weekend',
+                  'Fim de Semana'
+                ],
+                [
+                  'bestBets',
+                  '⭐ Top 6'
+                ]
+              ].map(
+                ([tab, label]) => (
+                  <button
+                    key={tab}
+                    onClick={() =>
+                      setCurrentTab(
+                        tab
+                      )
+                    }
+                    className={`py-4 px-1 text-sm whitespace-nowrap ${
+                      currentTab ===
+                      tab
+                        ? 'border-b-2 border-amber-400 text-amber-400 font-bold'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              )}
             </div>
           </div>
         </nav>
@@ -396,13 +863,15 @@ export default function Home() {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
 
               <p className="text-gray-400">
-                A carregar jogos...
+                A carregar jogos e odds...
               </p>
             </div>
           ) : error ? (
             <div className="text-center py-12 text-red-400 bg-slate-800 rounded-2xl border border-red-900 p-6">
+              <i className="fa-solid fa-triangle-exclamation text-3xl mb-4"></i>
+
               <p className="font-bold text-lg mb-2">
-                Erro ao carregar jogos
+                Erro ao carregar dados
               </p>
 
               <p className="text-sm mb-4">
@@ -410,17 +879,80 @@ export default function Home() {
               </p>
 
               <button
-                onClick={loadMatches}
+                onClick={
+                  loadData
+                }
                 className="bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg"
               >
                 Tentar novamente
               </button>
             </div>
+          ) : currentMatches.length ===
+            0 ? (
+            <div className="text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
+              <i className="fa-regular fa-calendar-xmark text-3xl mb-4 text-gray-500"></i>
+
+              <p className="font-bold text-lg mb-2">
+                Sem jogos disponíveis
+              </p>
+
+              <p className="text-sm">
+                Não existem jogos nesta categoria neste momento.
+              </p>
+            </div>
           ) : (
-            displayCurrentTab()
+            <div className="space-y-6">
+              {currentMatches
+                .slice(
+                  0,
+                  currentTab ===
+                    'bestBets'
+                    ? 6
+                    : 15
+                )
+                .map(
+                  (
+                    match,
+                    index
+                  ) => (
+                    <MatchCard
+                      key={
+                        match.id ||
+                        `${match.homeTeam?.name}-${match.awayTeam?.name}-${match.utcDate}`
+                      }
+                      match={
+                        match
+                      }
+                      oddsData={
+                        odds
+                      }
+                      index={
+                        index
+                      }
+                      isTopBet={
+                        currentTab ===
+                        'bestBets'
+                      }
+                    />
+                  )
+                )}
+            </div>
           )}
         </main>
+
+        <footer className="border-t border-slate-800 py-6 mt-8">
+          <div className="max-w-3xl mx-auto px-4 text-center">
+            <p className="text-xs text-gray-600">
+              Dados de jogos e odds sujeitos à disponibilidade das APIs.
+            </p>
+
+            <p className="text-xs text-gray-700 mt-1">
+              Odds podem mudar a qualquer momento.
+            </p>
+          </div>
+        </footer>
       </div>
     </>
   );
 }
+```
