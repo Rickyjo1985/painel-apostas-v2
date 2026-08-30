@@ -1,58 +1,105 @@
-const FOOTBALL_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
+```js
+const FOOTBALL_API_KEY =
+  process.env.FOOTBALL_DATA_API_KEY;
 
 export default async function handler(req, res) {
   if (!FOOTBALL_API_KEY) {
     return res.status(500).json({
-      error: 'FOOTBALL_DATA_API_KEY não está configurada na Vercel.'
+      error:
+        'FOOTBALL_DATA_API_KEY não está configurada na Vercel.'
     });
   }
 
   try {
     const now = new Date();
 
-    // Margem de 1 dia para evitar problemas de timezone
-    // entre UTC e a hora local de Portugal.
-const dateFrom = new Date(now);
-dateFrom.setUTCDate(dateFrom.getUTCDate() - 1);
+    // Hoje, em UTC
+    const dateFrom =
+      now.toISOString().split('T')[0];
 
-const dateTo = new Date(now);
-dateTo.setUTCDate(dateTo.getUTCDate() + 8);
+    // Apenas os próximos 7 dias.
+    // O limite da football-data.org é 10 dias.
+    const futureDate = new Date(now);
 
-    const fromDate = dateFrom.toISOString().split('T')[0];
-    const toDate = dateTo.toISOString().split('T')[0];
+    futureDate.setUTCDate(
+      futureDate.getUTCDate() + 7
+    );
+
+    const dateTo =
+      futureDate.toISOString().split('T')[0];
 
     const url =
-      `https://api.football-data.org/v4/matches` +
-      `?dateFrom=${fromDate}&dateTo=${toDate}`;
+      'https://api.football-data.org/v4/matches' +
+      `?dateFrom=${dateFrom}` +
+      `&dateTo=${dateTo}` +
+      '&status=SCHEDULED,TIMED';
+
+    console.log(
+      'Football-data.org:',
+      url.replace(
+        /dateFrom=[^&]+/,
+        `dateFrom=${dateFrom}`
+      )
+    );
 
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'X-Auth-Token': FOOTBALL_API_KEY
+        'X-Auth-Token':
+          FOOTBALL_API_KEY,
+        Accept: 'application/json'
       }
     });
 
+    const data =
+      await response.json().catch(
+        () => null
+      );
+
     if (!response.ok) {
-      const errorText = await response.text();
+      console.error(
+        'Football-data.org error:',
+        response.status,
+        data
+      );
 
       return res.status(response.status).json({
-        error: errorText || `Erro da API: ${response.status}`
+        error:
+          data?.message ||
+          data?.error ||
+          `Football-data.org respondeu com HTTP ${response.status}`,
+        errorCode:
+          data?.errorCode || response.status
       });
     }
 
-    const data = await response.json();
+    const matches =
+      Array.isArray(data?.matches)
+        ? data.matches
+        : [];
 
-    // Cache curto para não gastar pedidos desnecessariamente
+    /*
+     * Cache curto na Vercel.
+     * A página pode actualizar sem fazer
+     * uma chamada à API a cada refresh.
+     */
     res.setHeader(
       'Cache-Control',
       's-maxage=60, stale-while-revalidate=300'
     );
 
-    return res.status(200).json(data.matches || []);
+    return res.status(200).json(matches);
   } catch (error) {
-    console.error('Football Data API:', error);
+    console.error(
+      'Erro interno em /api/matches:',
+      error
+    );
 
     return res.status(500).json({
-      error: error.message || 'Erro interno ao obter jogos.'
+      error:
+        error.message ||
+        'Erro interno ao obter jogos.'
     });
   }
 }
+```
