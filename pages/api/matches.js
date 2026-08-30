@@ -12,11 +12,11 @@ export default async function handler(req, res) {
 
     // Margem de 1 dia para evitar problemas de timezone
     // entre UTC e a hora local de Portugal.
-    const dateFrom = new Date(now);
-    dateFrom.setUTCDate(dateFrom.getUTCDate() - 1);
+const dateFrom = new Date(now);
+dateFrom.setUTCDate(dateFrom.getUTCDate() - 1);
 
-    const dateTo = new Date(now);
-    dateTo.setUTCDate(dateTo.getUTCDate() + 10);
+const dateTo = new Date(now);
+dateTo.setUTCDate(dateTo.getUTCDate() + 8);
 
     const fromDate = dateFrom.toISOString().split('T')[0];
     const toDate = dateTo.toISOString().split('T')[0];
