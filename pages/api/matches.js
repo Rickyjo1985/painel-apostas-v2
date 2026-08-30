@@ -11,31 +11,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const now = new Date();
-
-    // Hoje, em UTC
-const dateFrom = now.toISOString().split('T')[0];
-
-const futureDate = new Date(now);
-
-futureDate.setUTCDate(
-  futureDate.getUTCDate() + 7
-);
-
-const dateTo = futureDate.toISOString().split('T')[0];
-
     const url =
-      'https://api.football-data.org/v4/matches' +
-      `?dateFrom=${dateFrom}` +
-      `&dateTo=${dateTo}` +
-      '&status=SCHEDULED,TIMED';
+      'https://api.football-data.org/v4/matches';
 
     console.log(
-      'Football-data.org:',
-      url.replace(
-        /dateFrom=[^&]+/,
-        `dateFrom=${dateFrom}`
-      )
+      'A chamar football-data.org:',
+      url
     );
 
     const response = await fetch(url, {
@@ -54,7 +35,7 @@ const dateTo = futureDate.toISOString().split('T')[0];
 
     if (!response.ok) {
       console.error(
-        'Football-data.org error:',
+        'Football-data.org:',
         response.status,
         data
       );
@@ -63,9 +44,10 @@ const dateTo = futureDate.toISOString().split('T')[0];
         error:
           data?.message ||
           data?.error ||
-          `Football-data.org respondeu com HTTP ${response.status}`,
+          'Erro na football-data.org',
         errorCode:
-          data?.errorCode || response.status
+          data?.errorCode ||
+          response.status
       });
     }
 
@@ -75,19 +57,41 @@ const dateTo = futureDate.toISOString().split('T')[0];
         : [];
 
     /*
-     * Cache curto na Vercel.
-     * A página pode actualizar sem fazer
-     * uma chamada à API a cada refresh.
+     * Devolvemos apenas jogos futuros/agendados.
      */
+    const now = new Date();
+
+    const futureMatches =
+      matches.filter((match) => {
+        const status =
+          match.status;
+
+        const isScheduled =
+          status === 'SCHEDULED' ||
+          status === 'TIMED';
+
+        const matchDate =
+          new Date(
+            match.utcDate
+          );
+
+        return (
+          isScheduled &&
+          matchDate >= now
+        );
+      });
+
     res.setHeader(
       'Cache-Control',
       's-maxage=60, stale-while-revalidate=300'
     );
 
-    return res.status(200).json(matches);
+    return res.status(200).json(
+      futureMatches
+    );
   } catch (error) {
     console.error(
-      'Erro interno em /api/matches:',
+      'Erro interno:',
       error
     );
 
