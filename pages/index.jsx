@@ -16,24 +16,27 @@ const TOP_LEAGUES = [
 function getLocalDate(dateString) {
   const date = new Date(dateString);
 
-  const year = date.getFullYear();
-  const month = String(
-    date.getMonth() + 1
-  ).padStart(2, '0');
-  const day = String(
-    date.getDate()
-  ).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: "Europe/Lisbon",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).format(date);
 }
 
 function addDays(date, days) {
   const result = new Date(date);
+
   result.setDate(
     result.getDate() + days
   );
+
   return result;
 }
+
 
 function getWeekendDates() {
   const today = new Date();
