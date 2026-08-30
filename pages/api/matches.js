@@ -1,4 +1,3 @@
-```js
 const FOOTBALL_API_KEY =
   process.env.FOOTBALL_DATA_API_KEY;
 
@@ -122,4 +121,3 @@ export default async function handler(req, res) {
     });
   }
 }
-```
