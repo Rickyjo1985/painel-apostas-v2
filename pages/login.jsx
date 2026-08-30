@@ -1,4 +1,3 @@
-javascript
 import { useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -25,8 +24,9 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response =
-        await fetch("/api/login", {
+      const response = await fetch(
+        "/api/login",
+        {
           method: "POST",
           headers: {
             "Content-Type":
@@ -36,7 +36,8 @@ export default function Login() {
             username,
             password
           })
-        });
+        }
+      );
 
       const data =
         await response.json();
@@ -92,8 +93,11 @@ export default function Login() {
         }}
       >
         <div className="w-full max-w-md">
+
           <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl p-8">
+
             <div className="text-center mb-8">
+
               <div className="inline-flex items-center justify-center bg-amber-400 text-slate-900 w-16 h-16 rounded-2xl mb-4">
                 <i className="fa-solid fa-crown text-2xl"></i>
               </div>
@@ -108,13 +112,16 @@ export default function Login() {
               <p className="text-gray-400 text-sm mt-2">
                 Acesso reservado
               </p>
+
             </div>
 
             <form
               onSubmit={handleLogin}
               className="space-y-5"
             >
+
               <div>
+
                 <label
                   htmlFor="username"
                   className="block text-sm font-semibold text-gray-300 mb-2"
@@ -123,6 +130,7 @@ export default function Login() {
                 </label>
 
                 <div className="relative">
+
                   <i className="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
 
                   <input
@@ -139,10 +147,13 @@ export default function Login() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white outline-none focus:border-amber-400"
                     placeholder="Utilizador"
                   />
+
                 </div>
+
               </div>
 
               <div>
+
                 <label
                   htmlFor="password"
                   className="block text-sm font-semibold text-gray-300 mb-2"
@@ -151,6 +162,7 @@ export default function Login() {
                 </label>
 
                 <div className="relative">
+
                   <i className="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
 
                   <input
@@ -167,14 +179,18 @@ export default function Login() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 pl-11 pr-4 text-white outline-none focus:border-amber-400"
                     placeholder="Palavra-passe"
                   />
+
                 </div>
+
               </div>
 
               {error && (
                 <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-sm">
+
                   <i className="fa-solid fa-triangle-exclamation mr-2"></i>
 
                   {error}
+
                 </div>
               )}
 
@@ -183,6 +199,7 @@ export default function Login() {
                 disabled={loading}
                 className="w-full bg-amber-400 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-extrabold py-3 rounded-xl transition"
               >
+
                 {loading ? (
                   <>
                     <i className="fa-solid fa-spinner animate-spin mr-2"></i>
@@ -194,13 +211,17 @@ export default function Login() {
                     Entrar
                   </>
                 )}
+
               </button>
+
             </form>
 
             <p className="text-center text-xs text-gray-600 mt-8">
               Acesso protegido
             </p>
+
           </div>
+
         </div>
       </div>
     </>
