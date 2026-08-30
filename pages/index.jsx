@@ -187,7 +187,10 @@ function findOddsForMatch(match, odds) {
       Math.abs(matchTime - oddsTime) /
       (1000 * 60);
 
-    if (difference <= 180 && difference < bestDifference) {
+    if (
+      difference <= 180 &&
+      difference < bestDifference
+    ) {
       bestDifference = difference;
       bestCandidate = item;
     }
@@ -210,13 +213,13 @@ function MatchCard({
   const over15 =
     matchOdds?.over15 || null;
 
-  const price =
-    typeof over15?.price === "number"
-      ? over15.price
-      : Number(over15?.price);
+  const price = Number(
+    over15?.price
+  );
 
   const hasValidPrice =
-    Number.isFinite(price) && price > 1;
+    Number.isFinite(price) &&
+    price > 1;
 
   return (
     <div
@@ -236,7 +239,8 @@ function MatchCard({
         <i className="fa-solid fa-trophy text-amber-400"></i>
 
         <span>
-          {match.competition?.name || "Competição"}
+          {match.competition?.name ||
+            "Competição"}
         </span>
 
         <span className="text-gray-600">
@@ -245,9 +249,13 @@ function MatchCard({
 
         <span>
           <i className="fa-regular fa-clock mr-1"></i>
-          {formatDate(match.utcDate)}
+          {formatDate(
+            match.utcDate
+          )}
           {" às "}
-          {formatTime(match.utcDate)}
+          {formatTime(
+            match.utcDate
+          )}
         </span>
       </div>
 
@@ -330,30 +338,37 @@ function MatchCard({
               <div className="flex flex-wrap gap-2">
                 {over15.alternatives
                   .slice(1, 4)
-                  .map((alternative, alternativeIndex) => {
-                    const alternativePrice =
-                      Number(
-                        alternative.price
+                  .map(
+                    (
+                      alternative,
+                      alternativeIndex
+                    ) => {
+                      const alternativePrice =
+                        Number(
+                          alternative.price
+                        );
+
+                      if (
+                        !Number.isFinite(
+                          alternativePrice
+                        )
+                      ) {
+                        return null;
+                      }
+
+                      return (
+                        <span
+                          key={`${alternative.bookmakerKey || alternative.bookmaker}-${alternativePrice}-${alternativeIndex}`}
+                          className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
+                        >
+                          {alternative.bookmaker}: @
+                          {alternativePrice.toFixed(
+                            2
+                          )}
+                        </span>
                       );
-
-                    if (
-                      !Number.isFinite(
-                        alternativePrice
-                      )
-                    ) {
-                      return null;
                     }
-
-                    return (
-                      <span
-                        key={`${alternative.bookmakerKey || alternative.bookmaker}-${alternativePrice}-${alternativeIndex}`}
-                        className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
-                      >
-                        {alternative.bookmaker}: @
-                        {alternativePrice.toFixed(2)}
-                      </span>
-                    );
-                  })}
+                  )}
               </div>
             </div>
           )}
@@ -434,7 +449,8 @@ export default function Home() {
               new Date(
                 match.utcDate
               ).getTime() >=
-              Date.now() - 60 * 60 * 1000
+              Date.now() -
+                60 * 60 * 1000
             );
           })
           .sort((a, b) => {
@@ -444,7 +460,9 @@ export default function Home() {
             );
           });
 
-      setMatches(futureMatches);
+      setMatches(
+        futureMatches
+      );
 
       const competitions = [
         ...new Set(
@@ -462,7 +480,9 @@ export default function Home() {
         )
       ];
 
-      if (competitions.length > 0) {
+      if (
+        competitions.length > 0
+      ) {
         const oddsResponse =
           await fetch(
             `/api/odds?competitions=${encodeURIComponent(
@@ -493,7 +513,8 @@ export default function Home() {
         );
 
         setLastUpdate(
-          oddsData.meta?.updatedAt ||
+          oddsData.meta
+            ?.updatedAt ||
             new Date().toISOString()
         );
       } else {
@@ -534,7 +555,9 @@ export default function Home() {
         new Date();
 
       const todayStr =
-        getLocalDate(today);
+        getLocalDate(
+          today
+        );
 
       const tomorrowStr =
         getLocalDate(
@@ -577,13 +600,40 @@ export default function Home() {
           }
         );
 
-      const weekendTop =
-        weekendMatches
-          .filter((match) =>
-            TOP_LEAGUES.includes(
+      /*
+       * TOP 6 INTELIGENTE
+       *
+       * Procuramos todos os jogos futuros
+       * que tenham uma odd Over 1.5.
+       *
+       * Não ficamos limitados ao sábado/domingo.
+       *
+       * A prioridade é:
+       * 1. Jogos de hoje
+       * 2. Jogos de amanhã
+       * 3. Jogos dos dias seguintes
+       *
+       * Dentro dessa ordem, usamos a maior
+       * odd disponível.
+       */
+
+      const todayTime =
+        new Date(
+          todayStr + "T00:00:00"
+        ).getTime();
+
+      const tomorrowTime =
+        new Date(
+          tomorrowStr + "T00:00:00"
+        ).getTime();
+
+      const topCandidates =
+        matches
+          .filter((match) => {
+            return TOP_LEAGUES.includes(
               match.competition?.code
-            )
-          )
+            );
+          })
           .map((match) => {
             const oddsData =
               findOddsForMatch(
@@ -591,52 +641,151 @@ export default function Home() {
                 odds
               );
 
+            const price =
+              Number(
+                oddsData
+                  ?.over15
+                  ?.price
+              );
+
+            const matchTime =
+              new Date(
+                match.utcDate
+              ).getTime();
+
+            let dayPriority = 3;
+
+            if (
+              Number.isFinite(
+                matchTime
+              )
+            ) {
+              if (
+                matchTime >=
+                  todayTime &&
+                matchTime <
+                  tomorrowTime
+              ) {
+                dayPriority = 1;
+              } else if (
+                matchTime >=
+                  tomorrowTime &&
+                matchTime <
+                  tomorrowTime +
+                    24 *
+                      60 *
+                      60 *
+                      1000
+              ) {
+                dayPriority = 2;
+              }
+            }
+
             return {
               match,
-              oddsData
+              oddsData,
+              price,
+              dayPriority,
+              matchTime
             };
           })
           .filter((item) => {
-            const price =
-              Number(
-                item.oddsData
-                  ?.over15
-                  ?.price
-              );
-
             return (
-              Number.isFinite(price) &&
-              price > 1
+              Number.isFinite(
+                item.price
+              ) &&
+              item.price > 1
             );
           })
           .sort((a, b) => {
-            const priceA =
-              Number(
-                a.oddsData
-                  ?.over15
-                  ?.price
+            /*
+             * Primeiro Hoje.
+             */
+            if (
+              a.dayPriority !==
+              b.dayPriority
+            ) {
+              return (
+                a.dayPriority -
+                b.dayPriority
               );
+            }
 
-            const priceB =
-              Number(
-                b.oddsData
-                  ?.over15
-                  ?.price
+            /*
+             * Dentro do mesmo dia,
+             * maior odd primeiro.
+             */
+            if (
+              a.price !==
+              b.price
+            ) {
+              return (
+                b.price -
+                a.price
               );
+            }
 
-            return priceB - priceA;
-          })
-          .slice(0, 6)
-          .map(
-            (item) =>
-              item.match
+            /*
+             * Se a odd for igual,
+             * jogo mais próximo primeiro.
+             */
+            return (
+              a.matchTime -
+              b.matchTime
+            );
+          });
+
+      /*
+       * Evitar jogos repetidos.
+       */
+      const usedKeys =
+        new Set();
+
+      const weekendTop = [];
+
+      for (
+        const item of topCandidates
+      ) {
+        const key =
+          getMatchKey(
+            item.match
+              .homeTeam?.name,
+            item.match
+              .awayTeam?.name
           );
 
+        if (
+          usedKeys.has(key)
+        ) {
+          continue;
+        }
+
+        usedKeys.add(key);
+
+        weekendTop.push(
+          item.match
+        );
+
+        if (
+          weekendTop.length >=
+          6
+        ) {
+          break;
+        }
+      }
+
       return {
-        today: todayMatches,
-        tomorrow: tomorrowMatches,
-        weekend: weekendMatches,
-        bestBets: weekendTop
+        today:
+          todayMatches,
+
+        tomorrow:
+          tomorrowMatches,
+
+        weekend:
+          weekendMatches,
+
+        bestBets:
+          weekendTop
       };
     }, [matches, odds]);
 
@@ -738,8 +887,14 @@ export default function Home() {
           <div className="max-w-3xl mx-auto px-4">
             <div className="flex overflow-x-auto gap-6">
               {[
-                ["today", "Hoje"],
-                ["tomorrow", "Amanhã"],
+                [
+                  "today",
+                  "Hoje"
+                ],
+                [
+                  "tomorrow",
+                  "Amanhã"
+                ],
                 [
                   "weekend",
                   "Fim de Semana"
@@ -835,7 +990,9 @@ export default function Home() {
                         match.id ||
                         `${match.homeTeam?.name}-${match.awayTeam?.name}-${match.utcDate}`
                       }
-                      match={match}
+                      match={
+                        match
+                      }
                       oddsData={
                         odds
                       }
