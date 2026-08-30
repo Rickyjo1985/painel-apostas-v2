@@ -1,36 +1,46 @@
-import { useState, useEffect, useMemo } from 'react';
-import Head from 'next/head';
+import { useState, useEffect, useMemo } from "react";
+import Head from "next/head";
 
 const TOP_LEAGUES = [
-  'PL',
-  'PD',
-  'BL1',
-  'SA',
-  'FL1',
-  'PPL',
-  'CL',
-  'EL',
-  'ECL'
+  "PL",
+  "PD",
+  "BL1",
+  "SA",
+  "FL1",
+  "PPL",
+  "CL",
+  "EL",
+  "ECL"
 ];
+
+function normalizeName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
+      " "
+    )
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function getLocalDate(dateString) {
   const date = new Date(dateString);
 
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
   }).format(date);
 }
 
 function addDays(date, days) {
   const result = new Date(date);
-
-  result.setDate(
-    result.getDate() + days
-  );
-
+  result.setDate(result.getDate() + days);
   return result;
 }
 
@@ -43,17 +53,11 @@ function getWeekendDates() {
   for (let i = 0; i < 10; i++) {
     const date = addDays(today, i);
 
-    if (
-      date.getDay() === 6 &&
-      !saturday
-    ) {
+    if (date.getDay() === 6 && !saturday) {
       saturday = getLocalDate(date);
     }
 
-    if (
-      date.getDay() === 0 &&
-      !sunday
-    ) {
+    if (date.getDay() === 0 && !sunday) {
       sunday = getLocalDate(date);
     }
 
@@ -69,131 +73,127 @@ function getWeekendDates() {
 }
 
 function formatTime(dateString) {
-  return new Date(
-    dateString
-  ).toLocaleTimeString('pt-PT', {
-    timeZone: 'Europe/Lisbon',
-    hour: '2-digit',
-    minute: '2-digit'
+  return new Date(dateString).toLocaleTimeString("pt-PT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Lisbon"
   });
 }
 
 function formatDate(dateString) {
-  return new Date(
-    dateString
-  ).toLocaleDateString('pt-PT', {
-    timeZone: 'Europe/Lisbon',
-    day: '2-digit',
-    month: '2-digit'
+  return new Date(dateString).toLocaleDateString("pt-PT", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Europe/Lisbon"
   });
 }
 
-function normalizeTeamName(name = '') {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(
-      /\b(fc|cf|sc|ac|afc|cd|club|football|clube)\b/g,
-      ' '
-    )
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function getMatchKey(homeTeam, awayTeam) {
+  return (
+    normalizeName(homeTeam) +
+    "__" +
+    normalizeName(awayTeam)
+  );
 }
 
-function getMatchKey(
-  homeTeam,
-  awayTeam
-) {
-  return `${normalizeTeamName(
-    homeTeam
-  )}__${normalizeTeamName(
-    awayTeam
-  )}`;
+function namesMatch(nameA, nameB) {
+  const a = normalizeName(nameA);
+  const b = normalizeName(nameB);
+
+  if (!a || !b) {
+    return false;
+  }
+
+  if (a === b) {
+    return true;
+  }
+
+  if (a.includes(b) || b.includes(a)) {
+    return true;
+  }
+
+  const wordsA = a.split(" ");
+  const wordsB = b.split(" ");
+
+  const commonWords = wordsA.filter((word) =>
+    wordsB.includes(word)
+  );
+
+  return (
+    commonWords.length >= 1 &&
+    commonWords.length >=
+      Math.min(wordsA.length, wordsB.length)
+  );
 }
 
-function findOddsForMatch(
-  match,
-  odds
-) {
-  const home = normalizeTeamName(
-    match.homeTeam?.name
-  );
-
-  const away = normalizeTeamName(
-    match.awayTeam?.name
-  );
-
-  if (!home || !away) {
+function findOddsForMatch(match, odds) {
+  if (!match || !odds) {
     return null;
   }
 
-  const exactKey =
-    `${home}__${away}`;
+  const exactKey = getMatchKey(
+    match.homeTeam?.name,
+    match.awayTeam?.name
+  );
 
   if (odds[exactKey]) {
     return odds[exactKey];
   }
 
-  const candidates =
-    Object.values(odds);
+  const matchTime = new Date(
+    match.utcDate
+  ).getTime();
 
-  const matchTime =
-    new Date(
-      match.utcDate
+  const candidates = Object.values(odds);
+
+  let bestCandidate = null;
+  let bestDifference = Infinity;
+
+  for (const item of candidates) {
+    if (!item) {
+      continue;
+    }
+
+    const homeMatch = namesMatch(
+      match.homeTeam?.name,
+      item.homeTeam
+    );
+
+    const awayMatch = namesMatch(
+      match.awayTeam?.name,
+      item.awayTeam
+    );
+
+    if (!homeMatch || !awayMatch) {
+      continue;
+    }
+
+    const oddsTime = new Date(
+      item.commenceTime
     ).getTime();
 
-  return (
-    candidates.find((item) => {
-      const oddsHome =
-        normalizeTeamName(
-          item.homeTeam
-        );
-
-      const oddsAway =
-        normalizeTeamName(
-          item.awayTeam
-        );
-
-      if (!oddsHome || !oddsAway) {
-        return false;
+    if (
+      Number.isNaN(matchTime) ||
+      Number.isNaN(oddsTime)
+    ) {
+      if (!bestCandidate) {
+        bestCandidate = item;
       }
 
-      const homeMatch =
-        oddsHome === home ||
-        oddsHome.includes(home) ||
-        home.includes(oddsHome);
+      continue;
+    }
 
-      const awayMatch =
-        oddsAway === away ||
-        oddsAway.includes(away) ||
-        away.includes(oddsAway);
+    const difference =
+      Math.abs(matchTime - oddsTime) /
+      (1000 * 60);
 
-      if (!homeMatch || !awayMatch) {
-        return false;
-      }
+    if (difference <= 180 && difference < bestDifference) {
+      bestDifference = difference;
+      bestCandidate = item;
+    }
+  }
 
-      const oddsTime =
-        new Date(
-          item.commenceTime
-        ).getTime();
-
-      if (
-        Number.isNaN(matchTime) ||
-        Number.isNaN(oddsTime)
-      ) {
-        return true;
-      }
-
-      const difference =
-        Math.abs(
-          matchTime - oddsTime
-        ) / (1000 * 60);
-
-      return difference <= 30;
-    }) || null
-  );
+  return bestCandidate;
 }
 
 function MatchCard({
@@ -202,24 +202,28 @@ function MatchCard({
   index,
   isTopBet
 }) {
-  const matchOdds =
-    findOddsForMatch(
-      match,
-      oddsData
-    );
+  const matchOdds = findOddsForMatch(
+    match,
+    oddsData
+  );
 
   const over15 =
     matchOdds?.over15 || null;
 
   const price =
-    over15?.price;
+    typeof over15?.price === "number"
+      ? over15.price
+      : Number(over15?.price);
+
+  const hasValidPrice =
+    Number.isFinite(price) && price > 1;
 
   return (
     <div
       className={`bg-slate-800 border rounded-2xl p-5 relative ${
         isTopBet
-          ? 'border-amber-400/40 shadow-lg shadow-amber-400/5'
-          : 'border-slate-700'
+          ? "border-amber-400/40 shadow-lg shadow-amber-400/5"
+          : "border-slate-700"
       }`}
     >
       {isTopBet && (
@@ -232,8 +236,7 @@ function MatchCard({
         <i className="fa-solid fa-trophy text-amber-400"></i>
 
         <span>
-          {match.competition?.name ||
-            'Competição'}
+          {match.competition?.name || "Competição"}
         </span>
 
         <span className="text-gray-600">
@@ -242,16 +245,9 @@ function MatchCard({
 
         <span>
           <i className="fa-regular fa-clock mr-1"></i>
-
-          {formatDate(
-            match.utcDate
-          )}
-
-          {' às '}
-
-          {formatTime(
-            match.utcDate
-          )}
+          {formatDate(match.utcDate)}
+          {" às "}
+          {formatTime(match.utcDate)}
         </span>
       </div>
 
@@ -288,55 +284,79 @@ function MatchCard({
       </div>
 
       <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-600">
-        <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-          <div>
-            <p className="text-xs text-emerald-400 font-bold">
-              MAIS DE 1.5 GOLOS
-            </p>
-
-            {over15?.bookmaker && (
-              <p className="text-[11px] text-gray-500 mt-1">
-                {over15.bookmaker}
+        {hasValidPrice ? (
+          <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+            <div>
+              <p className="text-xs text-emerald-400 font-bold">
+                MAIS DE 1.5 GOLOS
               </p>
-            )}
-          </div>
 
-          {price ? (
+              {over15.bookmaker && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  {over15.bookmaker}
+                </p>
+              )}
+            </div>
+
             <div className="bg-emerald-500 text-slate-950 font-extrabold text-lg px-4 py-2 rounded-lg">
-              @{Number(price).toFixed(2)}
+              @{price.toFixed(2)}
             </div>
-          ) : (
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 bg-slate-800 border border-slate-700 rounded-lg p-3">
+            <div>
+              <p className="text-xs text-gray-400 font-bold">
+                ODDS
+              </p>
+
+              <p className="text-[11px] text-gray-600 mt-1">
+                Não disponíveis para este jogo
+              </p>
+            </div>
+
             <div className="bg-slate-700 text-gray-400 font-bold text-xs px-3 py-2 rounded-lg text-center">
-              Odd indisponível
-            </div>
-          )}
-        </div>
-
-        {over15?.alternatives?.length > 1 && (
-          <div className="mt-3">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
-              Outras odds
-            </p>
-
-            <div className="flex flex-wrap gap-2">
-              {over15.alternatives
-                .slice(1, 4)
-                .map(
-                  (alternative) => (
-                    <span
-                      key={`${alternative.bookmakerKey}-${alternative.price}`}
-                      className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
-                    >
-                      {alternative.bookmaker}: @
-                      {Number(
-                        alternative.price
-                      ).toFixed(2)}
-                    </span>
-                  )
-                )}
+              Sem odd
             </div>
           </div>
         )}
+
+        {hasValidPrice &&
+          over15.alternatives?.length > 1 && (
+            <div className="mt-3">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
+                Outras odds
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {over15.alternatives
+                  .slice(1, 4)
+                  .map((alternative, alternativeIndex) => {
+                    const alternativePrice =
+                      Number(
+                        alternative.price
+                      );
+
+                    if (
+                      !Number.isFinite(
+                        alternativePrice
+                      )
+                    ) {
+                      return null;
+                    }
+
+                    return (
+                      <span
+                        key={`${alternative.bookmakerKey || alternative.bookmaker}-${alternativePrice}-${alternativeIndex}`}
+                        className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
+                      >
+                        {alternative.bookmaker}: @
+                        {alternativePrice.toFixed(2)}
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
       </div>
     </div>
   );
@@ -350,7 +370,7 @@ export default function Home() {
     useState({});
 
   const [currentTab, setCurrentTab] =
-    useState('today');
+    useState("today");
 
   const [loading, setLoading] =
     useState(true);
@@ -367,8 +387,8 @@ export default function Home() {
       setError(null);
 
       const matchesResponse =
-        await fetch('/api/matches', {
-          cache: 'no-store'
+        await fetch("/api/matches", {
+          cache: "no-store"
         });
 
       if (!matchesResponse.ok) {
@@ -379,7 +399,7 @@ export default function Home() {
 
         throw new Error(
           data.error ||
-            'Erro ao carregar jogos.'
+            "Erro ao carregar jogos."
         );
       }
 
@@ -389,34 +409,55 @@ export default function Home() {
       const allMatches =
         Array.isArray(matchesData)
           ? matchesData
-          : [];
+          : Array.isArray(
+                matchesData.matches
+              )
+            ? matchesData.matches
+            : [];
 
       const futureMatches =
         allMatches
-          .filter(
-            (match) =>
-              match.status === 'SCHEDULED' ||
-              match.status === 'TIMED'
-          )
-          .sort(
-            (a, b) =>
+          .filter((match) => {
+            return (
+              match.status ===
+                "SCHEDULED" ||
+              match.status ===
+                "TIMED"
+            );
+          })
+          .filter((match) => {
+            if (!match.utcDate) {
+              return false;
+            }
+
+            return (
+              new Date(
+                match.utcDate
+              ).getTime() >=
+              Date.now() - 60 * 60 * 1000
+            );
+          })
+          .sort((a, b) => {
+            return (
               new Date(a.utcDate) -
               new Date(b.utcDate)
-          );
+            );
+          });
 
-      setMatches(
-        futureMatches
-      );
+      setMatches(futureMatches);
 
       const competitions = [
         ...new Set(
           futureMatches
             .map(
               (match) =>
-                match.competition?.code
+                match.competition
+                  ?.code
             )
             .filter((code) =>
-              TOP_LEAGUES.includes(code)
+              TOP_LEAGUES.includes(
+                code
+              )
             )
         )
       ];
@@ -425,10 +466,10 @@ export default function Home() {
         const oddsResponse =
           await fetch(
             `/api/odds?competitions=${encodeURIComponent(
-              competitions.join(',')
+              competitions.join(",")
             )}`,
             {
-              cache: 'no-store'
+              cache: "no-store"
             }
           );
 
@@ -440,7 +481,7 @@ export default function Home() {
 
           throw new Error(
             data.error ||
-              'Erro ao carregar odds.'
+              "Erro ao carregar odds."
           );
         }
 
@@ -461,13 +502,13 @@ export default function Home() {
       }
     } catch (err) {
       console.error(
-        'Erro:',
+        "Erro ao carregar dados:",
         err
       );
 
       setError(
         err.message ||
-          'Erro ao carregar dados.'
+          "Erro ao carregar dados."
       );
     } finally {
       setLoading(false);
@@ -503,8 +544,7 @@ export default function Home() {
       const {
         saturday,
         sunday
-      } =
-        getWeekendDates();
+      } = getWeekendDates();
 
       const todayMatches =
         matches.filter(
@@ -544,41 +584,48 @@ export default function Home() {
               match.competition?.code
             )
           )
-          .map((match) => ({
-            match,
-            oddsData:
+          .map((match) => {
+            const oddsData =
               findOddsForMatch(
                 match,
                 odds
-              )
-          }))
-          .sort(
-            (a, b) => {
-              const priceA =
-                a.oddsData?.over15?.price ||
-                0;
+              );
 
-              const priceB =
-                b.oddsData?.over15?.price ||
-                0;
+            return {
+              match,
+              oddsData
+            };
+          })
+          .filter((item) => {
+            const price =
+              Number(
+                item.oddsData
+                  ?.over15
+                  ?.price
+              );
 
-              if (
-                priceA > 0 &&
-                priceB === 0
-              ) {
-                return -1;
-              }
+            return (
+              Number.isFinite(price) &&
+              price > 1
+            );
+          })
+          .sort((a, b) => {
+            const priceA =
+              Number(
+                a.oddsData
+                  ?.over15
+                  ?.price
+              );
 
-              if (
-                priceA === 0 &&
-                priceB > 0
-              ) {
-                return 1;
-              }
+            const priceB =
+              Number(
+                b.oddsData
+                  ?.over15
+                  ?.price
+              );
 
-              return priceB - priceA;
-            }
-          )
+            return priceB - priceA;
+          })
           .slice(0, 6)
           .map(
             (item) =>
@@ -589,25 +636,22 @@ export default function Home() {
         today: todayMatches,
         tomorrow: tomorrowMatches,
         weekend: weekendMatches,
-        bestBets:
-          weekendTop.length > 0
-            ? weekendTop
-            : weekendMatches.slice(0, 6)
+        bestBets: weekendTop
       };
     }, [matches, odds]);
 
   function getCurrentMatches() {
     switch (currentTab) {
-      case 'today':
+      case "today":
         return groupedMatches.today;
 
-      case 'tomorrow':
+      case "tomorrow":
         return groupedMatches.tomorrow;
 
-      case 'weekend':
+      case "weekend":
         return groupedMatches.weekend;
 
-      case 'bestBets':
+      case "bestBets":
         return groupedMatches.bestBets;
 
       default:
@@ -647,7 +691,7 @@ export default function Home() {
         className="bg-slate-900 text-gray-100 min-h-screen flex flex-col"
         style={{
           fontFamily:
-            'Inter, sans-serif'
+            "Inter, sans-serif"
         }}
       >
         <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
@@ -659,7 +703,7 @@ export default function Home() {
 
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-white">
-                  PAINEL{' '}
+                  PAINEL{" "}
                   <span className="text-amber-400">
                     PREMIUM
                   </span>
@@ -682,8 +726,8 @@ export default function Home() {
               <i
                 className={`fa-solid fa-rotate-right ${
                   loading
-                    ? 'animate-spin'
-                    : ''
+                    ? "animate-spin"
+                    : ""
                 }`}
               ></i>
             </button>
@@ -694,21 +738,30 @@ export default function Home() {
           <div className="max-w-3xl mx-auto px-4">
             <div className="flex overflow-x-auto gap-6">
               {[
-                ['today', 'Hoje'],
-                ['tomorrow', 'Amanhã'],
-                ['weekend', 'Fim de Semana'],
-                ['bestBets', '⭐ Top 6']
+                ["today", "Hoje"],
+                ["tomorrow", "Amanhã"],
+                [
+                  "weekend",
+                  "Fim de Semana"
+                ],
+                [
+                  "bestBets",
+                  "⭐ Top 6"
+                ]
               ].map(
                 ([tab, label]) => (
                   <button
                     key={tab}
                     onClick={() =>
-                      setCurrentTab(tab)
+                      setCurrentTab(
+                        tab
+                      )
                     }
                     className={`py-4 px-1 text-sm whitespace-nowrap ${
-                      currentTab === tab
-                        ? 'border-b-2 border-amber-400 text-amber-400 font-bold'
-                        : 'text-gray-400 hover:text-gray-200'
+                      currentTab ===
+                      tab
+                        ? "border-b-2 border-amber-400 text-amber-400 font-bold"
+                        : "text-gray-400 hover:text-gray-200"
                     }`}
                   >
                     {label}
@@ -741,13 +794,16 @@ export default function Home() {
               </p>
 
               <button
-                onClick={loadData}
+                onClick={
+                  loadData
+                }
                 className="bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg"
               >
                 Tentar novamente
               </button>
             </div>
-          ) : currentMatches.length === 0 ? (
+          ) : currentMatches.length ===
+            0 ? (
             <div className="text-center py-12 text-gray-400 bg-slate-800 rounded-2xl border border-slate-700 p-6">
               <i className="fa-regular fa-calendar-xmark text-3xl mb-4 text-gray-500"></i>
 
@@ -764,7 +820,8 @@ export default function Home() {
               {currentMatches
                 .slice(
                   0,
-                  currentTab === 'bestBets'
+                  currentTab ===
+                    "bestBets"
                     ? 6
                     : 15
                 )
@@ -779,11 +836,15 @@ export default function Home() {
                         `${match.homeTeam?.name}-${match.awayTeam?.name}-${match.utcDate}`
                       }
                       match={match}
-                      oddsData={odds}
-                      index={index}
+                      oddsData={
+                        odds
+                      }
+                      index={
+                        index
+                      }
                       isTopBet={
                         currentTab ===
-                        'bestBets'
+                        "bestBets"
                       }
                     />
                   )
@@ -807,4 +868,3 @@ export default function Home() {
     </>
   );
 }
-
