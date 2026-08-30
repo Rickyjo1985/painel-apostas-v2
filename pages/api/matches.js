@@ -14,19 +14,15 @@ export default async function handler(req, res) {
     const now = new Date();
 
     // Hoje, em UTC
-    const dateFrom =
-      now.toISOString().split('T')[0];
+const dateFrom = now.toISOString().split('T')[0];
 
-    // Apenas os próximos 7 dias.
-    // O limite da football-data.org é 10 dias.
-    const futureDate = new Date(now);
+const futureDate = new Date(now);
 
-    futureDate.setUTCDate(
-      futureDate.getUTCDate() + 7
-    );
+futureDate.setUTCDate(
+  futureDate.getUTCDate() + 7
+);
 
-    const dateTo =
-      futureDate.toISOString().split('T')[0];
+const dateTo = futureDate.toISOString().split('T')[0];
 
     const url =
       'https://api.football-data.org/v4/matches' +
