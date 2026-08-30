@@ -1,14 +1,10 @@
-```javascript
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 export async function middleware(request) {
-  const pathname =
-    request.nextUrl.pathname;
+  const pathname = request.nextUrl.pathname;
 
-  /*
-   * Estas páginas não precisam de login.
-   */
+  // Rotas que não precisam de autenticação
   if (
     pathname === "/login" ||
     pathname === "/api/login" ||
@@ -19,24 +15,16 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
+  // Procurar o cookie de autenticação
   const token =
-    request.cookies.get(
-      "auth_token"
-    )?.value;
+    request.cookies.get("auth_token")?.value;
 
-  /*
-   * Se não existir sessão:
-   * - páginas -> /login
-   * - APIs -> 401
-   */
+  // Sem sessão
   if (!token) {
-    if (
-      pathname.startsWith("/api/")
-    ) {
+    if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         {
-          error:
-            "Não autenticado."
+          error: "Não autenticado."
         },
         {
           status: 401
@@ -45,44 +33,28 @@ export async function middleware(request) {
     }
 
     return NextResponse.redirect(
-      new URL(
-        "/login",
-        request.url
-      )
+      new URL("/login", request.url)
     );
   }
 
-  const secret =
-    process.env.AUTH_SECRET;
+  const secret = process.env.AUTH_SECRET;
 
   if (!secret) {
-    if (
-      pathname.startsWith("/api/")
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "AUTH_SECRET não configurado."
-        },
-        {
-          status: 500
-        }
-      );
-    }
-
-    return NextResponse.redirect(
-      new URL(
-        "/login",
-        request.url
-      )
+    return NextResponse.json(
+      {
+        error:
+          "AUTH_SECRET não está configurado."
+      },
+      {
+        status: 500
+      }
     );
   }
 
   try {
-    const secretKey =
-      new TextEncoder().encode(
-        secret
-      );
+    const secretKey = new TextEncoder().encode(
+      secret
+    );
 
     await jwtVerify(
       token,
@@ -96,14 +68,11 @@ export async function middleware(request) {
       error
     );
 
-    if (
-      pathname.startsWith("/api/")
-    ) {
+    if (pathname.startsWith("/api/")) {
       const response =
         NextResponse.json(
           {
-            error:
-              "Sessão inválida."
+            error: "Sessão inválida."
           },
           {
             status: 401
@@ -119,10 +88,7 @@ export async function middleware(request) {
 
     const response =
       NextResponse.redirect(
-        new URL(
-          "/login",
-          request.url
-        )
+        new URL("/login", request.url)
       );
 
     response.cookies.delete(
@@ -138,4 +104,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico).*)"
   ]
 };
-```
