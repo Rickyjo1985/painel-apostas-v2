@@ -1,160 +1,93 @@
-```js
 const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 const SPORT_KEYS = {
-  PL: 'soccer_epl',
-  PD: 'soccer_spain_la_liga',
-  BL1: 'soccer_germany_bundesliga',
-  SA: 'soccer_italy_serie_a',
-  FL1: 'soccer_france_ligue_one',
-  PPL: 'soccer_portugal_primeira_liga',
-  CL: 'soccer_uefa_champs_league',
-  EL: 'soccer_uefa_europa_league',
-  ECL: 'soccer_uefa_europa_conference_league',
-  DED: 'soccer_netherlands_eredivisie',
-  TKL: 'soccer_turkey_super_league',
-  GSL: 'soccer_greece_super_league'
+  PL: "soccer_epl",
+  PD: "soccer_spain_la_liga",
+  BL1: "soccer_germany_bundesliga",
+  SA: "soccer_italy_serie_a",
+  FL1: "soccer_france_ligue_one",
+  PPL: "soccer_portugal_primeira_liga",
+  CL: "soccer_uefa_champs_league",
+  EL: "soccer_uefa_europa_league",
+  ECL: "soccer_uefa_europa_conference_league"
 };
 
-function normalizeTeamName(name) {
-  return String(name || '')
+function normalizeName(name) {
+  return String(name || "")
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\b(fc|cf|sc|ac|afc|club|football|clube)\b/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function teamsMatch(name1, name2) {
-  const a = normalizeTeamName(name1);
-  const b = normalizeTeamName(name2);
-
-  if (!a || !b) return false;
-
-  if (a === b) return true;
-
-  if (a.includes(b) || b.includes(a)) {
-    return true;
-  }
-
-  const wordsA = a.split(' ');
-  const wordsB = b.split(' ');
-
-  const commonWords = wordsA.filter(
-    (word) =>
-      word.length >= 3 &&
-      wordsB.includes(word)
-  );
-
-  return commonWords.length >= 2;
-}
-
 function findOver15(event) {
-  const candidates = [];
+  const results = [];
 
   for (const bookmaker of event.bookmakers || []) {
     for (const market of bookmaker.markets || []) {
-      if (market.key !== 'totals') {
+      if (market.key !== "totals") {
         continue;
       }
 
       for (const outcome of market.outcomes || []) {
-        const outcomeName = String(
-          outcome.name || ''
-        ).toLowerCase();
-
-        const point = Number(
-          outcome.point
-        );
-
         if (
-          outcomeName === 'over' &&
-          point === 1.5 &&
-          Number.isFinite(
-            Number(outcome.price)
-          )
+          String(outcome.name).toLowerCase() === "over" &&
+          Number(outcome.point) === 1.5
         ) {
-          candidates.push({
-            bookmaker:
-              bookmaker.title,
-            bookmakerKey:
-              bookmaker.key,
-            price: Number(
-              outcome.price
-            ),
-            point: point
+          results.push({
+            bookmaker: bookmaker.title,
+            price: Number(outcome.price)
           });
         }
       }
     }
   }
 
-  if (candidates.length === 0) {
+  if (results.length === 0) {
     return null;
   }
 
-  candidates.sort(
-    (a, b) => b.price - a.price
-  );
-
-  return {
-    best: candidates[0],
-    alternatives:
-      candidates.slice(0, 5)
-  };
-}
-
-async function fetchOdds(sportKey) {
-  const params = new URLSearchParams({
-    regions: 'eu',
-    markets: 'totals',
-    oddsFormat: 'decimal',
-    dateFormat: 'iso',
-    apiKey: ODDS_API_KEY
+  results.sort(function (a, b) {
+    return b.price - a.price;
   });
 
-  const url =
-    'https://api.the-odds-api.com/v4/sports/' +
-    sportKey +
-    '/odds?' +
-    params.toString();
+  return results[0];
+}
 
-  console.log(
-    'A consultar The Odds API:',
-    sportKey
-  );
+async function getOdds(sportKey) {
+  const url =
+    "https://api.the-odds-api.com/v4/sports/" +
+    sportKey +
+    "/odds" +
+    "?regions=eu" +
+    "&markets=totals" +
+    "&oddsFormat=decimal" +
+    "&dateFormat=iso" +
+    "&apiKey=" +
+    encodeURIComponent(ODDS_API_KEY);
 
   const response = await fetch(url);
 
-  const data =
-    await response.json().catch(
-      () => null
-    );
+  const data = await response.json();
 
   if (!response.ok) {
     throw new Error(
-      `The Odds API ${response.status}: ${
-        data?.message ||
+      "The Odds API respondeu " +
+        response.status +
+        ": " +
         JSON.stringify(data)
-      }`
     );
   }
 
-  return Array.isArray(data)
-    ? data
-    : [];
+  return Array.isArray(data) ? data : [];
 }
 
-export default async function handler(
-  req,
-  res
-) {
+export default async function handler(req, res) {
   if (!ODDS_API_KEY) {
     return res.status(500).json({
-      error:
-        'ODDS_API_KEY não está configurada na Vercel.'
+      error: "ODDS_API_KEY não está configurada na Vercel."
     });
   }
 
@@ -162,168 +95,109 @@ export default async function handler(
     let competitions = [];
 
     if (req.query.competitions) {
-      competitions = String(
-        req.query.competitions
-      )
-        .split(',')
-        .map((item) =>
-          item.trim().toUpperCase()
-        )
+      competitions = String(req.query.competitions)
+        .split(",")
+        .map(function (item) {
+          return item.trim().toUpperCase();
+        })
         .filter(Boolean);
     }
 
     if (competitions.length === 0) {
       competitions = [
-        'PPL',
-        'PL',
-        'PD',
-        'BL1',
-        'SA',
-        'FL1',
-        'CL',
-        'EL',
-        'ECL'
+        "PPL",
+        "PL",
+        "PD",
+        "BL1",
+        "SA",
+        "FL1",
+        "CL",
+        "EL",
+        "ECL"
       ];
     }
 
-    const sportKeys = [
-      ...new Set(
-        competitions
-          .map(
-            (competition) =>
-              SPORT_KEYS[
-                competition
-              ]
-          )
-          .filter(Boolean)
-      )
+    const sportKeys = competitions
+      .map(function (code) {
+        return SPORT_KEYS[code];
+      })
+      .filter(Boolean);
+
+    const uniqueSportKeys = [
+      ...new Set(sportKeys)
     ];
-
-    if (sportKeys.length === 0) {
-      return res.status(200).json({
-        odds: {},
-        meta: {
-          competitions: [],
-          eventsFound: 0
-        }
-      });
-    }
-
-    const results =
-      await Promise.allSettled(
-        sportKeys.map(
-          (sportKey) =>
-            fetchOdds(sportKey)
-        )
-      );
 
     const allEvents = [];
 
-    results.forEach(
-      (result, index) => {
-        if (
-          result.status ===
-          'fulfilled'
-        ) {
-          result.value.forEach(
-            (event) => {
-              allEvents.push({
-                ...event,
-                sportKey:
-                  sportKeys[index]
-              });
-            }
-          );
-        } else {
-          console.error(
-            'Erro ao consultar',
-            sportKeys[index],
-            result.reason
-          );
+    for (const sportKey of uniqueSportKeys) {
+      try {
+        const events = await getOdds(sportKey);
+
+        for (const event of events) {
+          allEvents.push({
+            ...event,
+            sportKey: sportKey
+          });
         }
+      } catch (error) {
+        console.error(
+          "Erro ao obter odds:",
+          sportKey,
+          error.message
+        );
       }
-    );
+    }
 
     const odds = {};
 
     for (const event of allEvents) {
-      const over15 =
-        findOver15(event);
+      const over15 = findOver15(event);
 
       if (!over15) {
         continue;
       }
 
-      const home =
-        normalizeTeamName(
-          event.home_team
-        );
+      const home = normalizeName(
+        event.home_team
+      );
 
-      const away =
-        normalizeTeamName(
-          event.away_team
-        );
+      const away = normalizeName(
+        event.away_team
+      );
 
-      const key =
-        home + '__' + away;
+      const key = home + "__" + away;
 
       odds[key] = {
         eventId: event.id,
-        sportKey:
-          event.sportKey,
-        homeTeam:
-          event.home_team,
-        awayTeam:
-          event.away_team,
-        commenceTime:
-          event.commence_time,
-        over15: {
-          price:
-            over15.best.price,
-          point:
-            over15.best.point,
-          bookmaker:
-            over15.best.bookmaker,
-          bookmakerKey:
-            over15.best
-              .bookmakerKey,
-          alternatives:
-            over15.alternatives
-        }
+        sportKey: event.sportKey,
+        homeTeam: event.home_team,
+        awayTeam: event.away_team,
+        commenceTime: event.commence_time,
+        over15: over15
       };
     }
 
     res.setHeader(
-      'Cache-Control',
-      's-maxage=120, stale-while-revalidate=300'
+      "Cache-Control",
+      "s-maxage=120, stale-while-revalidate=300"
     );
 
     return res.status(200).json({
       odds: odds,
       meta: {
-        competitions:
-          competitions,
-        sportsRequested:
-          sportKeys.length,
-        eventsFound:
-          allEvents.length,
-        matchesWithOver15:
-          Object.keys(odds)
-            .length,
-        updatedAt:
-          new Date().toISOString()
+        eventsFound: allEvents.length,
+        matchesWithOver15: Object.keys(odds).length,
+        updatedAt: new Date().toISOString()
       }
     });
   } catch (error) {
     console.error(
-      'Erro em /api/odds:',
+      "Erro em /api/odds:",
       error
     );
 
     return res.status(500).json({
-      error:
-        error.message ||
-        'Erro ao obter odds.'
+      error: error.message
     });
   }
 }
