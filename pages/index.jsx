@@ -866,20 +866,48 @@ export default function Home() {
               </div>
             </div>
 
-            <button
-              onClick={loadData}
-              disabled={loading}
-              className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
-              title="Actualizar jogos e odds"
-            >
-              <i
-                className={`fa-solid fa-rotate-right ${
-                  loading
-                    ? "animate-spin"
-                    : ""
-                }`}
-              ></i>
-            </button>
+<div className="flex items-center gap-4">
+  <button
+    onClick={loadData}
+    disabled={loading}
+    className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
+    title="Actualizar jogos e odds"
+  >
+    <i
+      className={`fa-solid fa-rotate-right ${
+        loading
+          ? "animate-spin"
+          : ""
+      }`}
+    ></i>
+  </button>
+
+  <button
+    onClick={async () => {
+      try {
+        await fetch(
+          "/api/logout",
+          {
+            method: "POST"
+          }
+        );
+      } catch (error) {
+        console.error(
+          "Erro ao terminar sessão:",
+          error
+        );
+      }
+
+      window.location.href =
+        "/login";
+    }}
+    className="text-gray-400 hover:text-red-400 text-sm"
+    title="Terminar sessão"
+  >
+    <i className="fa-solid fa-right-from-bracket"></i>
+  </button>
+</div>
+
           </div>
         </header>
 
