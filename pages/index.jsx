@@ -1,3 +1,4 @@
+jsx
 import { useState, useEffect, useMemo } from "react";
 import Head from "next/head";
 
@@ -13,34 +14,27 @@ const TOP_LEAGUES = [
   "ECL"
 ];
 
-function normalizeName(name) {
-  return String(name || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(
-      /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
-      " "
-    )
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function getLocalDate(dateString) {
   const date = new Date(dateString);
 
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Lisbon",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: "Europe/Lisbon",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).format(date);
 }
 
 function addDays(date, days) {
   const result = new Date(date);
-  result.setDate(result.getDate() + days);
+
+  result.setDate(
+    result.getDate() + days
+  );
+
   return result;
 }
 
@@ -51,17 +45,31 @@ function getWeekendDates() {
   let sunday = null;
 
   for (let i = 0; i < 10; i++) {
-    const date = addDays(today, i);
+    const date = addDays(
+      today,
+      i
+    );
 
-    if (date.getDay() === 6 && !saturday) {
-      saturday = getLocalDate(date);
+    if (
+      date.getDay() === 6 &&
+      !saturday
+    ) {
+      saturday =
+        getLocalDate(date);
     }
 
-    if (date.getDay() === 0 && !sunday) {
-      sunday = getLocalDate(date);
+    if (
+      date.getDay() === 0 &&
+      !sunday
+    ) {
+      sunday =
+        getLocalDate(date);
     }
 
-    if (saturday && sunday) {
+    if (
+      saturday &&
+      sunday
+    ) {
       break;
     }
   }
@@ -73,154 +81,176 @@ function getWeekendDates() {
 }
 
 function formatTime(dateString) {
-  return new Date(dateString).toLocaleTimeString("pt-PT", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Lisbon"
-  });
+  return new Date(
+    dateString
+  ).toLocaleTimeString(
+    "pt-PT",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone:
+        "Europe/Lisbon"
+    }
+  );
 }
 
 function formatDate(dateString) {
-  return new Date(dateString).toLocaleDateString("pt-PT", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Europe/Lisbon"
-  });
-}
-
-function getMatchKey(homeTeam, awayTeam) {
-  return (
-    normalizeName(homeTeam) +
-    "__" +
-    normalizeName(awayTeam)
-  );
-}
-
-function namesMatch(nameA, nameB) {
-  const a = normalizeName(nameA);
-  const b = normalizeName(nameB);
-
-  if (!a || !b) {
-    return false;
-  }
-
-  if (a === b) {
-    return true;
-  }
-
-  if (a.includes(b) || b.includes(a)) {
-    return true;
-  }
-
-  const wordsA = a.split(" ");
-  const wordsB = b.split(" ");
-
-  const commonWords = wordsA.filter((word) =>
-    wordsB.includes(word)
-  );
-
-  return (
-    commonWords.length >= 1 &&
-    commonWords.length >=
-      Math.min(wordsA.length, wordsB.length)
-  );
-}
-
-function findOddsForMatch(match, odds) {
-  if (!match || !odds) {
-    return null;
-  }
-
-  const exactKey = getMatchKey(
-    match.homeTeam?.name,
-    match.awayTeam?.name
-  );
-
-  if (odds[exactKey]) {
-    return odds[exactKey];
-  }
-
-  const matchTime = new Date(
-    match.utcDate
-  ).getTime();
-
-  const candidates = Object.values(odds);
-
-  let bestCandidate = null;
-  let bestDifference = Infinity;
-
-  for (const item of candidates) {
-    if (!item) {
-      continue;
+  return new Date(
+    dateString
+  ).toLocaleDateString(
+    "pt-PT",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone:
+        "Europe/Lisbon"
     }
+  );
+}
 
-    const homeMatch = namesMatch(
-      match.homeTeam?.name,
-      item.homeTeam
+function PredictionBadge({
+  prediction
+}) {
+  if (!prediction) {
+    return (
+      <div className="mt-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <p className="text-xs font-bold text-gray-500">
+          PROGNÓSTICO
+        </p>
+
+        <p className="text-sm text-gray-600 mt-1">
+          A calcular...
+        </p>
+      </div>
     );
-
-    const awayMatch = namesMatch(
-      match.awayTeam?.name,
-      item.awayTeam
-    );
-
-    if (!homeMatch || !awayMatch) {
-      continue;
-    }
-
-    const oddsTime = new Date(
-      item.commenceTime
-    ).getTime();
-
-    if (
-      Number.isNaN(matchTime) ||
-      Number.isNaN(oddsTime)
-    ) {
-      if (!bestCandidate) {
-        bestCandidate = item;
-      }
-
-      continue;
-    }
-
-    const difference =
-      Math.abs(matchTime - oddsTime) /
-      (1000 * 60);
-
-    if (
-      difference <= 180 &&
-      difference < bestDifference
-    ) {
-      bestDifference = difference;
-      bestCandidate = item;
-    }
   }
 
-  return bestCandidate;
+  if (
+    prediction.score === 0
+  ) {
+    return (
+      <div className="mt-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-gray-500">
+              PROGNÓSTICO
+            </p>
+
+            <p className="text-sm text-gray-400 mt-1">
+              Dados insuficientes
+            </p>
+          </div>
+
+          <span className="text-[10px] font-bold text-gray-500 bg-slate-700 px-2 py-1 rounded">
+            SEM SCORE
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  let scoreLabel =
+    "CONFIANÇA BAIXA";
+
+  if (
+    prediction.score >= 80
+  ) {
+    scoreLabel =
+      "CONFIANÇA MUITO ALTA";
+  } else if (
+    prediction.score >= 72
+  ) {
+    scoreLabel =
+      "CONFIANÇA ALTA";
+  } else if (
+    prediction.score >= 64
+  ) {
+    scoreLabel =
+      "CONFIANÇA MÉDIA";
+  }
+
+  return (
+    <div className="mt-4 bg-slate-900 border border-emerald-500/20 rounded-xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-emerald-400 font-extrabold">
+            🎯 PROGNÓSTICO
+          </p>
+
+          <p className="text-lg font-extrabold text-white mt-1">
+            {prediction.market}
+          </p>
+
+          <p className="text-[11px] text-gray-500 mt-1">
+            {prediction.level}
+          </p>
+        </div>
+
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+            <span className="text-lg font-extrabold text-emerald-400">
+              {prediction.score}
+            </span>
+          </div>
+
+          <p className="text-[9px] uppercase text-gray-600 mt-1">
+            Score
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+          <span>
+            {scoreLabel}
+          </span>
+
+          <span>
+            {prediction.score}/100
+          </span>
+        </div>
+
+        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 rounded-full"
+            style={{
+              width: `${prediction.score}%`
+            }}
+          />
+        </div>
+      </div>
+
+      {prediction.reasons?.length > 0 && (
+        <div className="mt-4 space-y-1">
+          {prediction.reasons
+            .slice(0, 3)
+            .map(
+              (
+                reason,
+                reasonIndex
+              ) => (
+                <p
+                  key={
+                    reasonIndex
+                  }
+                  className="text-[11px] text-gray-500"
+                >
+                  • {reason}
+                </p>
+              )
+            )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MatchCard({
   match,
-  oddsData,
+  prediction,
   index,
   isTopBet
 }) {
-  const matchOdds = findOddsForMatch(
-    match,
-    oddsData
-  );
-
-  const over15 =
-    matchOdds?.over15 || null;
-
-  const price = Number(
-    over15?.price
-  );
-
-  const hasValidPrice =
-    Number.isFinite(price) &&
-    price > 1;
-
   return (
     <div
       className={`bg-slate-800 border rounded-2xl p-5 relative ${
@@ -249,17 +279,20 @@ function MatchCard({
 
         <span>
           <i className="fa-regular fa-clock mr-1"></i>
+
           {formatDate(
             match.utcDate
           )}
+
           {" às "}
+
           {formatTime(
             match.utcDate
           )}
         </span>
       </div>
 
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between">
         <div className="text-center flex-1">
           <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
             {match.homeTeam?.shortName ||
@@ -291,88 +324,9 @@ function MatchCard({
         </div>
       </div>
 
-      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-600">
-        {hasValidPrice ? (
-          <div className="flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-            <div>
-              <p className="text-xs text-emerald-400 font-bold">
-                MAIS DE 1.5 GOLOS
-              </p>
-
-              {over15.bookmaker && (
-                <p className="text-[11px] text-gray-500 mt-1">
-                  {over15.bookmaker}
-                </p>
-              )}
-            </div>
-
-            <div className="bg-emerald-500 text-slate-950 font-extrabold text-lg px-4 py-2 rounded-lg">
-              @{price.toFixed(2)}
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3 bg-slate-800 border border-slate-700 rounded-lg p-3">
-            <div>
-              <p className="text-xs text-gray-400 font-bold">
-                ODDS
-              </p>
-
-              <p className="text-[11px] text-gray-600 mt-1">
-                Não disponíveis para este jogo
-              </p>
-            </div>
-
-            <div className="bg-slate-700 text-gray-400 font-bold text-xs px-3 py-2 rounded-lg text-center">
-              Sem odd
-            </div>
-          </div>
-        )}
-
-        {hasValidPrice &&
-          over15.alternatives?.length > 1 && (
-            <div className="mt-3">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
-                Outras odds
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                {over15.alternatives
-                  .slice(1, 4)
-                  .map(
-                    (
-                      alternative,
-                      alternativeIndex
-                    ) => {
-                      const alternativePrice =
-                        Number(
-                          alternative.price
-                        );
-
-                      if (
-                        !Number.isFinite(
-                          alternativePrice
-                        )
-                      ) {
-                        return null;
-                      }
-
-                      return (
-                        <span
-                          key={`${alternative.bookmakerKey || alternative.bookmaker}-${alternativePrice}-${alternativeIndex}`}
-                          className="text-[11px] bg-slate-700 text-gray-400 px-2 py-1 rounded"
-                        >
-                          {alternative.bookmaker}: @
-                          {alternativePrice.toFixed(
-                            2
-                          )}
-                        </span>
-                      );
-                    }
-                  )}
-              </div>
-            </div>
-          )}
-      </div>
+      <PredictionBadge
+        prediction={prediction}
+      />
     </div>
   );
 }
@@ -381,7 +335,7 @@ export default function Home() {
   const [matches, setMatches] =
     useState([]);
 
-  const [odds, setOdds] =
+  const [predictions, setPredictions] =
     useState({});
 
   const [currentTab, setCurrentTab] =
@@ -402,15 +356,23 @@ export default function Home() {
       setError(null);
 
       const matchesResponse =
-        await fetch("/api/matches", {
-          cache: "no-store"
-        });
+        await fetch(
+          "/api/matches",
+          {
+            cache:
+              "no-store"
+          }
+        );
 
-      if (!matchesResponse.ok) {
+      if (
+        !matchesResponse.ok
+      ) {
         const data =
           await matchesResponse
             .json()
-            .catch(() => ({}));
+            .catch(
+              () => ({})
+            );
 
         throw new Error(
           data.error ||
@@ -422,7 +384,9 @@ export default function Home() {
         await matchesResponse.json();
 
       const allMatches =
-        Array.isArray(matchesData)
+        Array.isArray(
+          matchesData
+        )
           ? matchesData
           : Array.isArray(
                 matchesData.matches
@@ -432,38 +396,35 @@ export default function Home() {
 
       const futureMatches =
         allMatches
-          .filter((match) => {
-            return (
+          .filter(
+            (match) =>
               match.status ===
                 "SCHEDULED" ||
               match.status ===
                 "TIMED"
-            );
-          })
-          .filter((match) => {
-            if (!match.utcDate) {
-              return false;
-            }
-
-            return (
+          )
+          .filter(
+            (match) =>
+              match.utcDate
+          )
+          .sort(
+            (a, b) =>
               new Date(
-                match.utcDate
-              ).getTime() >=
-              Date.now() -
-                60 * 60 * 1000
-            );
-          })
-          .sort((a, b) => {
-            return (
-              new Date(a.utcDate) -
-              new Date(b.utcDate)
-            );
-          });
+                a.utcDate
+              ) -
+              new Date(
+                b.utcDate
+              )
+          );
 
       setMatches(
         futureMatches
       );
 
+      /*
+       * Descobrimos apenas as competições
+       * que existem realmente nos jogos.
+       */
       const competitions = [
         ...new Set(
           futureMatches
@@ -480,50 +441,72 @@ export default function Home() {
         )
       ];
 
+      /*
+       * Pedimos os prognósticos.
+       *
+       * Enviamos os jogos no body para
+       * o endpoint calcular as estatísticas
+       * desses jogos.
+       */
       if (
-        competitions.length > 0
+        competitions.length > 0 &&
+        futureMatches.length > 0
       ) {
-        const oddsResponse =
+        const predictionsResponse =
           await fetch(
-            `/api/odds?competitions=${encodeURIComponent(
+            `/api/predictions?competitions=${encodeURIComponent(
               competitions.join(",")
             )}`,
             {
-              cache: "no-store"
+              method:
+                "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body: JSON.stringify({
+                matches:
+                  futureMatches
+              })
             }
           );
 
-        if (!oddsResponse.ok) {
+        if (
+          !predictionsResponse.ok
+        ) {
           const data =
-            await oddsResponse
+            await predictionsResponse
               .json()
-              .catch(() => ({}));
+              .catch(
+                () => ({})
+              );
 
           throw new Error(
             data.error ||
-              "Erro ao carregar odds."
+              "Erro ao calcular prognósticos."
           );
         }
 
-        const oddsData =
-          await oddsResponse.json();
+        const predictionData =
+          await predictionsResponse.json();
 
-        setOdds(
-          oddsData.odds || {}
+        setPredictions(
+          predictionData.predictions ||
+            {}
         );
 
         setLastUpdate(
-          oddsData.meta
+          predictionData.meta
             ?.updatedAt ||
             new Date().toISOString()
         );
       } else {
-        setOdds({});
+        setPredictions({});
         setLastUpdate(null);
       }
     } catch (err) {
       console.error(
-        "Erro ao carregar dados:",
+        "Erro:",
         err
       );
 
@@ -546,7 +529,9 @@ export default function Home() {
       );
 
     return () =>
-      clearInterval(interval);
+      clearInterval(
+        interval
+      );
   }, []);
 
   const groupedMatches =
@@ -561,20 +546,25 @@ export default function Home() {
 
       const tomorrowStr =
         getLocalDate(
-          addDays(today, 1)
+          addDays(
+            today,
+            1
+          )
         );
 
       const {
         saturday,
         sunday
-      } = getWeekendDates();
+      } =
+        getWeekendDates();
 
       const todayMatches =
         matches.filter(
           (match) =>
             getLocalDate(
               match.utcDate
-            ) === todayStr
+            ) ===
+            todayStr
         );
 
       const tomorrowMatches =
@@ -582,7 +572,8 @@ export default function Home() {
           (match) =>
             getLocalDate(
               match.utcDate
-            ) === tomorrowStr
+            ) ===
+            tomorrowStr
         );
 
       const weekendMatches =
@@ -594,185 +585,85 @@ export default function Home() {
               );
 
             return (
-              date === saturday ||
-              date === sunday
+              date ===
+                saturday ||
+              date ===
+                sunday
             );
           }
         );
 
       /*
-       * TOP 6 INTELIGENTE
+       * TOP 6
        *
-       * Procuramos todos os jogos futuros
-       * que tenham uma odd Over 1.5.
-       *
-       * Não ficamos limitados ao sábado/domingo.
-       *
-       * A prioridade é:
-       * 1. Jogos de hoje
-       * 2. Jogos de amanhã
-       * 3. Jogos dos dias seguintes
-       *
-       * Dentro dessa ordem, usamos a maior
-       * odd disponível.
+       * Agora é baseado no SCORE
+       * do algoritmo e não em odds.
        */
-
-      const todayTime =
-        new Date(
-          todayStr + "T00:00:00"
-        ).getTime();
-
-      const tomorrowTime =
-        new Date(
-          tomorrowStr + "T00:00:00"
-        ).getTime();
-
       const topCandidates =
         matches
-          .filter((match) => {
-            return TOP_LEAGUES.includes(
+          .filter((match) =>
+            TOP_LEAGUES.includes(
               match.competition?.code
-            );
-          })
-          .map((match) => {
-            const oddsData =
-              findOddsForMatch(
-                match,
-                odds
-              );
-
-            const price =
+            )
+          )
+          .map((match) => ({
+            match,
+            prediction:
+              predictions[
+                String(
+                  match.id
+                )
+              ]
+          }))
+          .filter(
+            (item) =>
+              item.prediction &&
               Number(
-                oddsData
-                  ?.over15
-                  ?.price
-              );
+                item.prediction
+                  .score
+              ) > 0
+          )
+          .sort(
+            (a, b) => {
+              const scoreA =
+                Number(
+                  a.prediction
+                    ?.score || 0
+                );
 
-            const matchTime =
-              new Date(
-                match.utcDate
-              ).getTime();
+              const scoreB =
+                Number(
+                  b.prediction
+                    ?.score || 0
+                );
 
-            let dayPriority = 3;
-
-            if (
-              Number.isFinite(
-                matchTime
-              )
-            ) {
               if (
-                matchTime >=
-                  todayTime &&
-                matchTime <
-                  tomorrowTime
+                scoreA !==
+                scoreB
               ) {
-                dayPriority = 1;
-              } else if (
-                matchTime >=
-                  tomorrowTime &&
-                matchTime <
-                  tomorrowTime +
-                    24 *
-                      60 *
-                      60 *
-                      1000
-              ) {
-                dayPriority = 2;
+                return (
+                  scoreB -
+                  scoreA
+                );
               }
-            }
 
-            return {
-              match,
-              oddsData,
-              price,
-              dayPriority,
-              matchTime
-            };
-          })
-          .filter((item) => {
-            return (
-              Number.isFinite(
-                item.price
-              ) &&
-              item.price > 1
-            );
-          })
-          .sort((a, b) => {
-            /*
-             * Primeiro Hoje.
-             */
-            if (
-              a.dayPriority !==
-              b.dayPriority
-            ) {
               return (
-                a.dayPriority -
-                b.dayPriority
+                new Date(
+                  a.match
+                    .utcDate
+                ) -
+                new Date(
+                  b.match
+                    .utcDate
+                )
               );
             }
-
-            /*
-             * Dentro do mesmo dia,
-             * maior odd primeiro.
-             */
-            if (
-              a.price !==
-              b.price
-            ) {
-              return (
-                b.price -
-                a.price
-              );
-            }
-
-            /*
-             * Se a odd for igual,
-             * jogo mais próximo primeiro.
-             */
-            return (
-              a.matchTime -
-              b.matchTime
-            );
-          });
-
-      /*
-       * Evitar jogos repetidos.
-       */
-      const usedKeys =
-        new Set();
-
-      const weekendTop = [];
-
-      for (
-        const item of topCandidates
-      ) {
-        const key =
-          getMatchKey(
-            item.match
-              .homeTeam?.name,
-            item.match
-              .awayTeam?.name
+          )
+          .slice(0, 6)
+          .map(
+            (item) =>
+              item.match
           );
-
-        if (
-          usedKeys.has(key)
-        ) {
-          continue;
-        }
-
-        usedKeys.add(key);
-
-        weekendTop.push(
-          item.match
-        );
-
-        if (
-          weekendTop.length >=
-          6
-        ) {
-          break;
-        }
-      }
 
       return {
         today:
@@ -785,12 +676,17 @@ export default function Home() {
           weekendMatches,
 
         bestBets:
-          weekendTop
+          topCandidates
       };
-    }, [matches, odds]);
+    }, [
+      matches,
+      predictions
+    ]);
 
   function getCurrentMatches() {
-    switch (currentTab) {
+    switch (
+      currentTab
+    ) {
       case "today":
         return groupedMatches.today;
 
@@ -815,12 +711,12 @@ export default function Home() {
     <>
       <Head>
         <title>
-          Painel Apostas Premium
+          Painel Prognósticos Premium
         </title>
 
         <meta
           name="description"
-          content="Painel de jogos e odds de futebol"
+          content="Painel de jogos e prognósticos de futebol"
         />
 
         <link
@@ -860,54 +756,60 @@ export default function Home() {
 
                 {lastUpdate && (
                   <p className="text-[10px] text-gray-500 mt-1">
-                    Odds actualizadas automaticamente
+                    Prognósticos actualizados automaticamente
                   </p>
                 )}
               </div>
             </div>
 
-<div className="flex items-center gap-4">
-  <button
-    onClick={loadData}
-    disabled={loading}
-    className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
-    title="Actualizar jogos e odds"
-  >
-    <i
-      className={`fa-solid fa-rotate-right ${
-        loading
-          ? "animate-spin"
-          : ""
-      }`}
-    ></i>
-  </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={
+                  loadData
+                }
+                disabled={
+                  loading
+                }
+                className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
+                title="Actualizar jogos e prognósticos"
+              >
+                <i
+                  className={`fa-solid fa-rotate-right ${
+                    loading
+                      ? "animate-spin"
+                      : ""
+                  }`}
+                ></i>
+              </button>
 
-  <button
-    onClick={async () => {
-      try {
-        await fetch(
-          "/api/logout",
-          {
-            method: "POST"
-          }
-        );
-      } catch (error) {
-        console.error(
-          "Erro ao terminar sessão:",
-          error
-        );
-      }
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch(
+                      "/api/logout",
+                      {
+                        method:
+                          "POST"
+                      }
+                    );
+                  } catch (
+                    error
+                  ) {
+                    console.error(
+                      "Erro ao terminar sessão:",
+                      error
+                    );
+                  }
 
-      window.location.href =
-        "/login";
-    }}
-    className="text-gray-400 hover:text-red-400 text-sm"
-    title="Terminar sessão"
-  >
-    <i className="fa-solid fa-right-from-bracket"></i>
-  </button>
-</div>
-
+                  window.location.href =
+                    "/login";
+                }}
+                className="text-gray-400 hover:text-red-400 text-sm"
+                title="Terminar sessão"
+              >
+                <i className="fa-solid fa-right-from-bracket"></i>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -961,7 +863,7 @@ export default function Home() {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-400 mb-3"></div>
 
               <p className="text-gray-400">
-                A carregar jogos e odds...
+                A calcular prognósticos...
               </p>
             </div>
           ) : error ? (
@@ -1018,15 +920,15 @@ export default function Home() {
                         match.id ||
                         `${match.homeTeam?.name}-${match.awayTeam?.name}-${match.utcDate}`
                       }
-                      match={
-                        match
+                      match={match}
+                      prediction={
+                        predictions[
+                          String(
+                            match.id
+                          )
+                        ]
                       }
-                      oddsData={
-                        odds
-                      }
-                      index={
-                        index
-                      }
+                      index={index}
                       isTopBet={
                         currentTab ===
                         "bestBets"
@@ -1041,11 +943,11 @@ export default function Home() {
         <footer className="border-t border-slate-800 py-6 mt-8">
           <div className="max-w-3xl mx-auto px-4 text-center">
             <p className="text-xs text-gray-600">
-              Dados de jogos e odds sujeitos à disponibilidade das APIs.
+              Prognósticos calculados automaticamente a partir de dados estatísticos.
             </p>
 
             <p className="text-xs text-gray-700 mt-1">
-              Odds podem mudar a qualquer momento.
+              O score é um indicador interno de confiança e não garante o resultado.
             </p>
           </div>
         </footer>
