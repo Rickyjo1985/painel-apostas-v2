@@ -9,6 +9,7 @@ const TOP_LEAGUES = [
   "SA",
   "FL1",
   "PPL",
+  "ELC",
   "CL",
   "EL",
   "ECL"
