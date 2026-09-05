@@ -8,6 +8,7 @@ const VALID_COMPETITIONS = [
   "SA",
   "FL1",
   "PPL",
+  "ELC",
   "CL",
   "EL",
   "ECL"
