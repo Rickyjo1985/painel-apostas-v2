@@ -13,183 +13,57 @@ const VALID_COMPETITIONS = [
   "ECL"
 ];
 
+function getDateUTC(offset) {
+  const date = new Date();
+
+  date.setUTCDate(
+    date.getUTCDate() + offset
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
 function normalizeName(name) {
   return String(name || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
     .replace(
       /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
       " "
     )
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[^a-z0-9\s]/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
-function sameTeam(nameA, nameB) {
-  const a = normalizeName(nameA);
-  const b = normalizeName(nameB);
+function teamsMatch(
+  teamA,
+  teamB
+) {
+  const a = normalizeName(teamA);
+  const b = normalizeName(teamB);
 
   if (!a || !b) {
     return false;
   }
 
-  if (a === b) {
-    return true;
-  }
-
-  if (a.includes(b) || b.includes(a)) {
-    return true;
-  }
-
-  const wordsA = a.split(" ");
-  const wordsB = b.split(" ");
-
-  const common = wordsA.filter(
-    (word) =>
-      word.length >= 3 &&
-      wordsB.includes(word)
+  return (
+    a === b ||
+    a.includes(b) ||
+    b.includes(a)
   );
-
-  return common.length >= 1;
-}
-
-function calculateTeamStats(
-  matches,
-  teamName
-) {
-  const teamMatches = matches
-    .filter((match) => {
-      return (
-        sameTeam(
-          match.homeTeam?.name,
-          teamName
-        ) ||
-        sameTeam(
-          match.awayTeam?.name,
-          teamName
-        )
-      );
-    })
-    .filter(
-      (match) =>
-        match.status === "FINISHED"
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.utcDate) -
-        new Date(a.utcDate)
-    )
-    .slice(0, 5);
-
-  if (!teamMatches.length) {
-    return null;
-  }
-
-  let games = 0;
-  let wins = 0;
-  let draws = 0;
-  let losses = 0;
-
-  let points = 0;
-  let goalsFor = 0;
-  let goalsAgainst = 0;
-
-  let over15 = 0;
-  let over25 = 0;
-  let btts = 0;
-
-  for (const match of teamMatches) {
-    const isHome = sameTeam(
-      match.homeTeam?.name,
-      teamName
-    );
-
-    const homeGoals = Number(
-      match.score?.fullTime?.home
-    );
-
-    const awayGoals = Number(
-      match.score?.fullTime?.away
-    );
-
-    if (
-      !Number.isFinite(homeGoals) ||
-      !Number.isFinite(awayGoals)
-    ) {
-      continue;
-    }
-
-    const gf = isHome
-      ? homeGoals
-      : awayGoals;
-
-    const ga = isHome
-      ? awayGoals
-      : homeGoals;
-
-    games++;
-
-    goalsFor += gf;
-    goalsAgainst += ga;
-
-    if (gf > ga) {
-      wins++;
-      points += 3;
-    } else if (gf === ga) {
-      draws++;
-      points += 1;
-    } else {
-      losses++;
-    }
-
-    if (
-      gf + ga >= 2
-    ) {
-      over15++;
-    }
-
-    if (
-      gf + ga >= 3
-    ) {
-      over25++;
-    }
-
-    if (
-      gf > 0 &&
-      ga > 0
-    ) {
-      btts++;
-    }
-  }
-
-  if (!games) {
-    return null;
-  }
-
-  return {
-    games,
-    wins,
-    draws,
-    losses,
-    pointsPerGame:
-      points / games,
-    goalsForAvg:
-      goalsFor / games,
-    goalsAgainstAvg:
-      goalsAgainst / games,
-    totalGoalsAvg:
-      (goalsFor +
-        goalsAgainst) /
-      games,
-    over15Rate:
-      over15 / games,
-    over25Rate:
-      over25 / games,
-    bttsRate:
-      btts / games
-  };
 }
 
 function clamp(
@@ -203,14 +77,356 @@ function clamp(
   );
 }
 
+function getTrendTeam(
+  trend,
+  side
+) {
+  if (!trend) {
+    return null;
+  }
+
+  return trend.trend?.[side] || null;
+}
+
+function getGamesFromTrend(
+  trendTeam
+) {
+  if (!trendTeam) {
+    return 0;
+  }
+
+  if (
+    Array.isArray(
+      trendTeam.match_ids
+    )
+  ) {
+    return trendTeam.match_ids.length;
+  }
+
+  return 0;
+}
+
+function calculateOver15Score(
+  home,
+  away
+) {
+  const homeOver =
+    Number(
+      home?.pct_o_15
+    );
+
+  const awayOver =
+    Number(
+      away?.pct_o_15
+    );
+
+  const homeGoals =
+    Number(
+      home?.avg_goals
+    );
+
+  const awayGoals =
+    Number(
+      away?.avg_goals
+    );
+
+  const homeScored =
+    Number(
+      home?.avg_goals_scored
+    );
+
+  const awayScored =
+    Number(
+      away?.avg_goals_scored
+    );
+
+  if (
+    !Number.isFinite(
+      homeOver
+    ) ||
+    !Number.isFinite(
+      awayOver
+    )
+  ) {
+    return 0;
+  }
+
+  const overRate =
+    (homeOver +
+      awayOver) /
+    2;
+
+  const goalAverage =
+    Number.isFinite(
+      homeGoals
+    ) &&
+    Number.isFinite(
+      awayGoals
+    )
+      ? (homeGoals +
+          awayGoals) /
+        2
+      : 0;
+
+  const scoringAverage =
+    Number.isFinite(
+      homeScored
+    ) &&
+    Number.isFinite(
+      awayScored
+    )
+      ? (homeScored +
+          awayScored) /
+        2
+      : 0;
+
+  /*
+   * Base 55
+   *
+   * A tendência estatística representa
+   * a maior parte do score.
+   */
+  let score = 55;
+
+  score +=
+    (overRate - 0.5) *
+    45;
+
+  if (
+    goalAverage >= 3
+  ) {
+    score += 8;
+  } else if (
+    goalAverage >= 2.5
+  ) {
+    score += 6;
+  } else if (
+    goalAverage >= 2.0
+  ) {
+    score += 4;
+  }
+
+  if (
+    scoringAverage >= 1.5
+  ) {
+    score += 5;
+  } else if (
+    scoringAverage >= 1.2
+  ) {
+    score += 3;
+  }
+
+  return clamp(
+    Math.round(score),
+    50,
+    88
+  );
+}
+
+function calculateResultPrediction(
+  home,
+  away
+) {
+  const homePoints =
+    Number(
+      home?.avg_points
+    );
+
+  const awayPoints =
+    Number(
+      away?.avg_points
+    );
+
+  const homeScored =
+    Number(
+      home?.avg_goals_scored
+    );
+
+  const awayScored =
+    Number(
+      away?.avg_goals_scored
+    );
+
+  const homeConceded =
+    Number(
+      home?.avg_goals_conceded
+    );
+
+  const awayConceded =
+    Number(
+      away?.avg_goals_conceded
+    );
+
+  if (
+    !Number.isFinite(
+      homePoints
+    ) ||
+    !Number.isFinite(
+      awayPoints
+    )
+  ) {
+    return {
+      market: "1X",
+      score: 0
+    };
+  }
+
+  const homeStrength =
+    homePoints +
+    (Number.isFinite(
+      homeScored
+    )
+      ? homeScored * 0.7
+      : 0) -
+    (Number.isFinite(
+      homeConceded
+    )
+      ? homeConceded * 0.35
+      : 0);
+
+  const awayStrength =
+    awayPoints +
+    (Number.isFinite(
+      awayScored
+    )
+      ? awayScored * 0.7
+      : 0) -
+    (Number.isFinite(
+      awayConceded
+    )
+      ? awayConceded * 0.35
+      : 0);
+
+  const difference =
+    homeStrength -
+    awayStrength;
+
+  let market = "1X";
+  let score = 60;
+
+  if (
+    difference >= 1.0
+  ) {
+    market = "1";
+    score = 72;
+  } else if (
+    difference >= 0.45
+  ) {
+    market = "1X";
+    score = 68;
+  } else if (
+    difference <= -1.0
+  ) {
+    market = "2";
+    score = 72;
+  } else if (
+    difference <= -0.45
+  ) {
+    market = "X2";
+    score = 68;
+  } else {
+    market = "1X";
+    score = 61;
+  }
+
+  return {
+    market,
+    score: clamp(
+      Math.round(score),
+      50,
+      80
+    )
+  };
+}
+
+function calculateBTTSScore(
+  home,
+  away
+) {
+  const homeBTTS =
+    Number(
+      home?.pct_bts
+    );
+
+  const awayBTTS =
+    Number(
+      away?.pct_bts
+    );
+
+  if (
+    !Number.isFinite(
+      homeBTTS
+    ) ||
+    !Number.isFinite(
+      awayBTTS
+    )
+  ) {
+    return 0;
+  }
+
+  const rate =
+    (homeBTTS +
+      awayBTTS) /
+    2;
+
+  return clamp(
+    Math.round(
+      48 + rate * 40
+    ),
+    50,
+    88
+  );
+}
+
+function getConfidenceLevel(
+  score
+) {
+  if (score >= 82) {
+    return "MUITO ALTA";
+  }
+
+  if (score >= 75) {
+    return "ALTA";
+  }
+
+  if (score >= 67) {
+    return "MÉDIA";
+  }
+
+  return "BAIXA";
+}
+
 function calculatePrediction(
   match,
-  homeStats,
-  awayStats
+  trend
 ) {
+  if (!trend) {
+    return {
+      market:
+        "Dados insuficientes",
+      score: 0,
+      level:
+        "DADOS INSUFICIENTES",
+      reasons: [],
+      stats: null
+    };
+  }
+
+  const home =
+    getTrendTeam(
+      trend,
+      "home"
+    );
+
+  const away =
+    getTrendTeam(
+      trend,
+      "away"
+    );
+
   if (
-    !homeStats ||
-    !awayStats
+    !home ||
+    !away
   ) {
     return {
       market:
@@ -223,141 +439,58 @@ function calculatePrediction(
     };
   }
 
-  /*
-   * ------------------------------------
-   * OVER 1.5 GOLOS
-   * ------------------------------------
-   */
+  const homeGames =
+    getGamesFromTrend(
+      home
+    );
 
-  const over15Rate =
-    (
-      homeStats.over15Rate +
-      awayStats.over15Rate
-    ) / 2;
-
-  const averageGoals =
-    (
-      homeStats.totalGoalsAvg +
-      awayStats.totalGoalsAvg
-    ) / 2;
-
-  let over15Score =
-    over15Rate * 70;
-
-  if (
-    averageGoals >= 2.5
-  ) {
-    over15Score += 18;
-  } else if (
-    averageGoals >= 2.0
-  ) {
-    over15Score += 12;
-  } else if (
-    averageGoals >= 1.7
-  ) {
-    over15Score += 7;
-  }
-
-  if (
-    homeStats.goalsForAvg >= 1.2
-  ) {
-    over15Score += 6;
-  }
-
-  if (
-    awayStats.goalsForAvg >= 1.0
-  ) {
-    over15Score += 6;
-  }
-
-  over15Score = clamp(
-    Math.round(over15Score),
-    0,
-    100
-  );
+  const awayGames =
+    getGamesFromTrend(
+      away
+    );
 
   /*
-   * ------------------------------------
-   * RESULTADO
-   * ------------------------------------
+   * Não queremos previsões fortes
+   * com amostras demasiado pequenas.
    */
-
-  const homeStrength =
-    homeStats.pointsPerGame +
-    homeStats.goalsForAvg * 0.7 -
-    homeStats.goalsAgainstAvg * 0.4;
-
-  const awayStrength =
-    awayStats.pointsPerGame +
-    awayStats.goalsForAvg * 0.7 -
-    awayStats.goalsAgainstAvg * 0.4;
-
-  const difference =
-    homeStrength -
-    awayStrength;
-
-  let resultMarket = "1X";
-  let resultScore = 60;
-
-  if (difference >= 0.9) {
-    resultMarket = "1";
-    resultScore = 72;
-  } else if (
-    difference >= 0.35
-  ) {
-    resultMarket = "1X";
-    resultScore = 67;
-  } else if (
-    difference <= -0.9
-  ) {
-    resultMarket = "2";
-    resultScore = 72;
-  } else if (
-    difference <= -0.35
-  ) {
-    resultMarket = "X2";
-    resultScore = 67;
-  }
-
   if (
-    homeStats.games >= 4 &&
-    awayStats.games >= 4
+    homeGames < 5 ||
+    awayGames < 5
   ) {
-    resultScore += 5;
+    return {
+      market:
+        "Dados insuficientes",
+      score: 0,
+      level:
+        "DADOS INSUFICIENTES",
+      reasons: [
+        `Histórico casa: ${homeGames} jogos`,
+        `Histórico fora: ${awayGames} jogos`
+      ],
+      stats: {
+        homeGames,
+        awayGames
+      }
+    };
   }
 
-  resultScore = clamp(
-    Math.round(resultScore),
-    0,
-    100
-  );
+  const over15Score =
+    calculateOver15Score(
+      home,
+      away
+    );
 
-  /*
-   * ------------------------------------
-   * AMBAS MARCAM
-   * ------------------------------------
-   */
+  const result =
+    calculateResultPrediction(
+      home,
+      away
+    );
 
-  let bttsScore = Math.round(
-    (
-      homeStats.bttsRate +
-      awayStats.bttsRate
-    ) /
-      2 *
-      100
-  );
-
-  bttsScore = clamp(
-    bttsScore,
-    0,
-    100
-  );
-
-  /*
-   * ------------------------------------
-   * ESCOLHER MELHOR PROGNÓSTICO
-   * ------------------------------------
-   */
+  const bttsScore =
+    calculateBTTSScore(
+      home,
+      away
+    );
 
   const candidates = [
     {
@@ -366,15 +499,15 @@ function calculatePrediction(
       score:
         over15Score,
       reason:
-        "Tendência recente de golos"
+        "Tendência de 2 ou mais golos"
     },
     {
       market:
-        resultMarket,
+        result.market,
       score:
-        resultScore,
+        result.score,
       reason:
-        "Força e forma recente"
+        "Forma e força recente"
     },
     {
       market:
@@ -382,7 +515,7 @@ function calculatePrediction(
       score:
         bttsScore,
       reason:
-        "Frequência recente de ambas as equipas marcarem"
+        "Frequência de ambas marcarem"
     }
   ];
 
@@ -394,25 +527,67 @@ function calculatePrediction(
   const best =
     candidates[0];
 
-  let level =
-    "BAIXA";
+  const homeOver15 =
+    Number(
+      home.pct_o_15
+    );
+
+  const awayOver15 =
+    Number(
+      away.pct_o_15
+    );
+
+  const homeGoals =
+    Number(
+      home.avg_goals
+    );
+
+  const awayGoals =
+    Number(
+      away.avg_goals
+    );
+
+  const reasons = [
+    best.reason
+  ];
 
   if (
-    best.score >= 80
+    Number.isFinite(
+      homeOver15
+    ) &&
+    Number.isFinite(
+      awayOver15
+    )
   ) {
-    level =
-      "MUITO ALTA";
-  } else if (
-    best.score >= 72
-  ) {
-    level =
-      "ALTA";
-  } else if (
-    best.score >= 64
-  ) {
-    level =
-      "MÉDIA";
+    reasons.push(
+      `Over 1.5: casa ${Math.round(
+        homeOver15 * 100
+      )}% / fora ${Math.round(
+        awayOver15 * 100
+      )}%`
+    );
   }
+
+  if (
+    Number.isFinite(
+      homeGoals
+    ) &&
+    Number.isFinite(
+      awayGoals
+    )
+  ) {
+    reasons.push(
+      `Média de golos: casa ${homeGoals.toFixed(
+        2
+      )} / fora ${awayGoals.toFixed(
+        2
+      )}`
+    );
+  }
+
+  reasons.push(
+    `Amostra: ${homeGames} jogos casa / ${awayGames} jogos fora`
+  );
 
   return {
     market:
@@ -421,96 +596,77 @@ function calculatePrediction(
     score:
       best.score,
 
-    level,
+    level:
+      getConfidenceLevel(
+        best.score
+      ),
 
-    reasons: [
-      best.reason,
-
-      `Média golos casa: ${homeStats.goalsForAvg.toFixed(2)}`,
-
-      `Média golos fora: ${awayStats.goalsForAvg.toFixed(2)}`,
-
-      `Over 1.5 recente: ${Math.round(
-        over15Rate * 100
-      )}%`
-    ],
+    reasons,
 
     stats: {
-      homeGames:
-        homeStats.games,
-
-      awayGames:
-        awayStats.games,
+      homeGames,
+      awayGames,
 
       homeOver15:
-        Math.round(
-          homeStats.over15Rate *
-            100
-        ),
+        Number.isFinite(
+          homeOver15
+        )
+          ? Math.round(
+              homeOver15 *
+                100
+            )
+          : null,
 
       awayOver15:
-        Math.round(
-          awayStats.over15Rate *
-            100
-        ),
-
-      homeGoalsFor:
-        Number(
-          homeStats.goalsForAvg.toFixed(
-            2
-          )
-        ),
-
-      awayGoalsFor:
-        Number(
-          awayStats.goalsForAvg.toFixed(
-            2
-          )
+        Number.isFinite(
+          awayOver15
         )
+          ? Math.round(
+              awayOver15 *
+                100
+            )
+          : null,
+
+      homeGoals:
+        Number.isFinite(
+          homeGoals
+        )
+          ? Number(
+              homeGoals.toFixed(
+                2
+              )
+            )
+          : null,
+
+      awayGoals:
+        Number.isFinite(
+          awayGoals
+        )
+          ? Number(
+              awayGoals.toFixed(
+                2
+              )
+            )
+          : null
     }
   };
 }
 
-function getDateUTC(
-  offset
-) {
-  const date =
-    new Date();
-
-  date.setUTCDate(
-    date.getUTCDate() +
-      offset
-  );
-
-  return date
-    .toISOString()
-    .slice(0, 10);
-}
-
-async function getHistoricalMatches(
+async function getTrends(
   competitions
 ) {
   /*
-   * Uma única chamada à API.
-   *
-   * Intervalo de 9 dias:
-   * suficientemente pequeno para
-   * respeitar o limite da API.
+   * Hoje + próximos 6 dias.
+   * dateTo é exclusivo na API.
    */
-
   const dateFrom =
-    getDateUTC(-9);
+    getDateUTC(0);
 
   const dateTo =
-    getDateUTC(0);
+    getDateUTC(7);
 
   const params =
     new URLSearchParams();
-
-  params.set(
-    "competitions",
-    competitions.join(",")
-  );
 
   params.set(
     "dateFrom",
@@ -523,12 +679,29 @@ async function getHistoricalMatches(
   );
 
   params.set(
-    "status",
-    "FINISHED"
+    "competitions",
+    competitions.join(",")
+  );
+
+  params.set(
+    "window",
+    "8"
+  );
+
+  /*
+   * Para a equipa da casa usamos
+   * apenas jogos em casa.
+   *
+   * Para a equipa visitante usamos
+   * apenas jogos fora.
+   */
+  params.set(
+    "consider_side",
+    ""
   );
 
   const url =
-    "https://api.football-data.org/v4/matches?" +
+    "https://api.football-data.org/v4/trends?" +
     params.toString();
 
   const response =
@@ -571,18 +744,63 @@ async function getHistoricalMatches(
     }
 
     throw new Error(
-      typeof data === "string"
+      typeof data ===
+        "string"
         ? data
         : data?.message ||
-          "Erro ao obter histórico."
+          "Erro ao obter tendências."
     );
   }
 
   return Array.isArray(
-    data?.matches
+    data?.trends
   )
-    ? data.matches
+    ? data.trends
     : [];
+}
+
+function findTrendForMatch(
+  match,
+  trends
+) {
+  /*
+   * Preferimos IDs das equipas.
+   */
+  const homeId =
+    match.homeTeam?.id;
+
+  const awayId =
+    match.awayTeam?.id;
+
+  const byId =
+    trends.find(
+      (item) =>
+        item.homeTeam?.id ===
+          homeId &&
+        item.awayTeam?.id ===
+          awayId
+    );
+
+  if (byId) {
+    return byId;
+  }
+
+  /*
+   * Fallback pelos nomes.
+   */
+  return (
+    trends.find(
+      (item) =>
+        teamsMatch(
+          item.homeTeam?.name,
+          match.homeTeam?.name
+        ) &&
+        teamsMatch(
+          item.awayTeam?.name,
+          match.awayTeam?.name
+        )
+    ) || null
+  );
 }
 
 export default async function handler(
@@ -656,66 +874,46 @@ export default async function handler(
     }
 
     /*
-     * UMA chamada à football-data.org
+     * Apenas UMA chamada à API
+     * para obter as tendências.
      */
-    const historicalMatches =
-      await getHistoricalMatches(
+    const trends =
+      await getTrends(
         competitions
       );
 
     const predictions = {};
 
     for (const match of matches) {
-      const history =
-        historicalMatches.filter(
-          (historical) =>
-            historical
-              .competition
-              ?.code ===
-            match.competition
-              ?.code
-        );
-
-      const homeStats =
-        calculateTeamStats(
-          history,
-          match.homeTeam?.name
-        );
-
-      const awayStats =
-        calculateTeamStats(
-          history,
-          match.awayTeam?.name
+      const trend =
+        findTrendForMatch(
+          match,
+          trends
         );
 
       predictions[
         String(match.id)
-      ] =
-        {
-          matchId:
-            match.id,
+      ] = {
+        matchId:
+          match.id,
 
-          homeTeam:
-            match.homeTeam
-              ?.name,
+        homeTeam:
+          match.homeTeam?.name,
 
-          awayTeam:
-            match.awayTeam
-              ?.name,
+        awayTeam:
+          match.awayTeam?.name,
 
-          competition:
-            match.competition
-              ?.name,
+        competition:
+          match.competition?.name,
 
-          utcDate:
-            match.utcDate,
+        utcDate:
+          match.utcDate,
 
-          ...calculatePrediction(
-            match,
-            homeStats,
-            awayStats
-          )
-        };
+        ...calculatePrediction(
+          match,
+          trend
+        )
+      };
     }
 
     res.setHeader(
@@ -727,8 +925,8 @@ export default async function handler(
       predictions,
 
       meta: {
-        historyMatches:
-          historicalMatches.length,
+        trendsFound:
+          trends.length,
 
         competitions:
           competitions.length,
