@@ -652,13 +652,7 @@ function calculatePrediction(
   };
 }
 
-async function getTrends(
-  competitions
-) {
-  /*
-   * Hoje + próximos 6 dias.
-   * dateTo é exclusivo na API.
-   */
+async function getTrends(competitions) {
   const dateFrom =
     getDateUTC(0);
 
@@ -688,22 +682,19 @@ async function getTrends(
     "8"
   );
 
-  /*
-   * Para a equipa da casa usamos
-   * apenas jogos em casa.
-   *
-   * Para a equipa visitante usamos
-   * apenas jogos fora.
-   */
-  params.set("window", "8");
-params.append("consider_side", "");
-
   const url =
     "https://api.football-data.org/v4/trends?" +
-    params.toString();
+    params.toString() +
+    "&consider_side";
+
+  console.log(
+    "Trends URL:",
+    url
+  );
 
   const response =
     await fetch(url, {
+      method: "GET",
       headers: {
         "X-Auth-Token":
           FOOTBALL_API_KEY,
@@ -732,21 +723,37 @@ params.append("consider_side", "");
   }
 
   if (!response.ok) {
+    console.error(
+      "Trends API:",
+      response.status,
+      data
+    );
+
+    let message =
+      "Erro ao obter tendências.";
+
     if (
-      response.status ===
-      429
+      typeof data ===
+      "string"
     ) {
-      throw new Error(
-        "A football-data.org atingiu o limite de pedidos. Aguarda alguns segundos e tenta novamente."
-      );
+      message = data;
+    } else if (
+      data?.message
+    ) {
+      message =
+        data.message;
+    } else if (
+      data?.error
+    ) {
+      message =
+        data.error;
     }
 
     throw new Error(
-      typeof data ===
-        "string"
-        ? data
-        : data?.message ||
-          "Erro ao obter tendências."
+      "HTTP " +
+        response.status +
+        ": " +
+        message
     );
   }
 
