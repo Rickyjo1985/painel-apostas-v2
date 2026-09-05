@@ -22,14 +22,26 @@ function normalizeName(name) {
       /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
       " "
     )
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[^a-z0-9\s]/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
-function sameTeam(nameA, nameB) {
-  const a = normalizeName(nameA);
-  const b = normalizeName(nameB);
+function sameTeam(
+  nameA,
+  nameB
+) {
+  const a =
+    normalizeName(nameA);
+
+  const b =
+    normalizeName(nameB);
 
   if (!a || !b) {
     return false;
@@ -42,56 +54,83 @@ function sameTeam(nameA, nameB) {
   );
 }
 
-function clamp(value, min, max) {
+function clamp(
+  value,
+  min,
+  max
+) {
   return Math.max(
     min,
     Math.min(max, value)
   );
 }
 
-function calculateTeamStats(
+/*
+ * Obtém os jogos terminados da equipa.
+ * Primeiro tenta os jogos no contexto pedido:
+ * HOME ou AWAY.
+ */
+function getTeamMatches(
   matches,
   teamName,
   venue
 ) {
-  const relevantMatches = matches
+  const all = matches
+    .filter(
+      (match) =>
+        match.status ===
+        "FINISHED"
+    )
     .filter((match) => {
-      const isHome = sameTeam(
-        match.homeTeam?.name,
-        teamName
-      );
+      const isHome =
+        sameTeam(
+          match.homeTeam?.name,
+          teamName
+        );
 
-      const isAway = sameTeam(
-        match.awayTeam?.name,
-        teamName
-      );
+      const isAway =
+        sameTeam(
+          match.awayTeam?.name,
+          teamName
+        );
 
       if (!isHome && !isAway) {
         return false;
       }
 
-      if (venue === "HOME" && !isHome) {
+      if (
+        venue === "HOME" &&
+        !isHome
+      ) {
         return false;
       }
 
-      if (venue === "AWAY" && !isAway) {
+      if (
+        venue === "AWAY" &&
+        !isAway
+      ) {
         return false;
       }
 
-      return (
-        match.status === "FINISHED"
-      );
+      return true;
     })
     .sort(
       (a, b) =>
         new Date(b.utcDate) -
         new Date(a.utcDate)
-    )
-    .slice(0, 8);
+    );
 
-  if (
-    relevantMatches.length < 4
-  ) {
+  return all;
+}
+
+/*
+ * Calcula estatísticas de uma equipa.
+ */
+function calculateTeamStats(
+  matches,
+  teamName
+) {
+  if (!matches.length) {
     return null;
   }
 
@@ -108,23 +147,30 @@ function calculateTeamStats(
   let over25 = 0;
   let btts = 0;
 
-  for (const match of relevantMatches) {
-    const isHome = sameTeam(
-      match.homeTeam?.name,
-      teamName
-    );
+  for (const match of matches) {
+    const isHome =
+      sameTeam(
+        match.homeTeam?.name,
+        teamName
+      );
 
-    const homeGoals = Number(
-      match.score?.fullTime?.home
-    );
+    const homeGoals =
+      Number(
+        match.score?.fullTime?.home
+      );
 
-    const awayGoals = Number(
-      match.score?.fullTime?.away
-    );
+    const awayGoals =
+      Number(
+        match.score?.fullTime?.away
+      );
 
     if (
-      !Number.isFinite(homeGoals) ||
-      !Number.isFinite(awayGoals)
+      !Number.isFinite(
+        homeGoals
+      ) ||
+      !Number.isFinite(
+        awayGoals
+      )
     ) {
       continue;
     }
@@ -152,11 +198,15 @@ function calculateTeamStats(
       losses++;
     }
 
-    if (gf + ga >= 2) {
+    if (
+      gf + ga >= 2
+    ) {
       over15++;
     }
 
-    if (gf + ga >= 3) {
+    if (
+      gf + ga >= 3
+    ) {
       over25++;
     }
 
@@ -168,7 +218,7 @@ function calculateTeamStats(
     }
   }
 
-  if (!games) {
+  if (games === 0) {
     return null;
   }
 
@@ -203,47 +253,124 @@ function calculateTeamStats(
   };
 }
 
+/*
+ * Tenta primeiro HOME/AWAY.
+ * Se não houver pelo menos 3 jogos,
+ * completa com jogos gerais recentes.
+ */
+function buildTeamStats(
+  matches,
+  teamName,
+  venue
+) {
+  const venueMatches =
+    getTeamMatches(
+      matches,
+      teamName,
+      venue
+    );
+
+  const generalMatches =
+    getTeamMatches(
+      matches,
+      teamName,
+      "ALL"
+    );
+
+  const selected = [
+    ...venueMatches.slice(
+      0,
+      8
+    )
+  ];
+
+  /*
+   * Completar com jogos gerais
+   * que ainda não estejam presentes.
+   */
+  if (selected.length < 8) {
+    for (const match of generalMatches) {
+      if (
+        selected.some(
+          (item) =>
+            item.id ===
+            match.id
+        )
+      ) {
+        continue;
+      }
+
+      selected.push(match);
+
+      if (
+        selected.length >= 8
+      ) {
+        break;
+      }
+    }
+  }
+
+  return calculateTeamStats(
+    selected,
+    teamName
+  );
+}
+
 function calculateOver15Score(
-  homeStats,
-  awayStats
+  home,
+  away
 ) {
   const overRate =
     (
-      homeStats.over15Rate +
-      awayStats.over15Rate
+      home.over15Rate +
+      away.over15Rate
     ) / 2;
 
   const goalAverage =
     (
-      homeStats.totalGoalsAvg +
-      awayStats.totalGoalsAvg
+      home.totalGoalsAvg +
+      away.totalGoalsAvg
     ) / 2;
 
   const scoringAverage =
     (
-      homeStats.goalsForAvg +
-      awayStats.goalsForAvg
+      home.goalsForAvg +
+      away.goalsForAvg
     ) / 2;
 
   let score = 55;
 
+  /*
+   * Tendência Over 1.5.
+   */
   score +=
-    (overRate - 0.5) * 45;
+    (overRate - 0.5) *
+    42;
 
+  /*
+   * Média de golos.
+   */
   if (
-    goalAverage >= 2.6
+    goalAverage >= 2.7
   ) {
     score += 8;
   } else if (
-    goalAverage >= 2.2
+    goalAverage >= 2.3
   ) {
     score += 6;
   } else if (
-    goalAverage >= 1.9
+    goalAverage >= 2.0
   ) {
-    score += 3;
+    score += 4;
+  } else if (
+    goalAverage >= 1.7
+  ) {
+    score += 2;
   }
 
+  /*
+   * Capacidade ofensiva.
+   */
   if (
     scoringAverage >= 1.5
   ) {
@@ -262,19 +389,21 @@ function calculateOver15Score(
 }
 
 function calculateResultPrediction(
-  homeStats,
-  awayStats
+  home,
+  away
 ) {
   const homeStrength =
-    homeStats.pointsPerGame +
-    homeStats.goalsForAvg * 0.7 -
-    homeStats.goalsAgainstAvg *
+    home.pointsPerGame +
+    home.goalsForAvg *
+      0.7 -
+    home.goalsAgainstAvg *
       0.35;
 
   const awayStrength =
-    awayStats.pointsPerGame +
-    awayStats.goalsForAvg * 0.7 -
-    awayStats.goalsAgainstAvg *
+    away.pointsPerGame +
+    away.goalsForAvg *
+      0.7 -
+    away.goalsAgainstAvg *
       0.35;
 
   const difference =
@@ -282,7 +411,7 @@ function calculateResultPrediction(
     awayStrength;
 
   if (
-    difference >= 1
+    difference >= 1.0
   ) {
     return {
       market: "1",
@@ -300,7 +429,7 @@ function calculateResultPrediction(
   }
 
   if (
-    difference <= -1
+    difference <= -1.0
   ) {
     return {
       market: "2",
@@ -324,19 +453,18 @@ function calculateResultPrediction(
 }
 
 function calculateBTTSScore(
-  homeStats,
-  awayStats
+  home,
+  away
 ) {
-  const bttsRate =
+  const rate =
     (
-      homeStats.bttsRate +
-      awayStats.bttsRate
+      home.bttsRate +
+      away.bttsRate
     ) / 2;
 
   return clamp(
     Math.round(
-      48 +
-        bttsRate * 40
+      48 + rate * 40
     ),
     50,
     88
@@ -361,33 +489,30 @@ function getLevel(score) {
 
 function calculatePrediction(
   match,
-  historicalMatches
+  history
 ) {
-  /*
-   * Para a equipa da casa usamos apenas
-   * os últimos jogos em casa.
-   */
   const homeStats =
-    calculateTeamStats(
-      historicalMatches,
+    buildTeamStats(
+      history,
       match.homeTeam?.name,
       "HOME"
     );
 
-  /*
-   * Para a equipa visitante usamos apenas
-   * os últimos jogos fora.
-   */
   const awayStats =
-    calculateTeamStats(
-      historicalMatches,
+    buildTeamStats(
+      history,
       match.awayTeam?.name,
       "AWAY"
     );
 
+  /*
+   * Agora apenas precisamos de 3 jogos.
+   */
   if (
     !homeStats ||
-    !awayStats
+    !awayStats ||
+    homeStats.games < 3 ||
+    awayStats.games < 3
   ) {
     return {
       market:
@@ -400,20 +525,24 @@ function calculatePrediction(
 
       reasons: [
         `Histórico casa: ${
-          homeStats?.games || 0
+          homeStats?.games ||
+          0
         } jogos`,
 
         `Histórico fora: ${
-          awayStats?.games || 0
+          awayStats?.games ||
+          0
         } jogos`
       ],
 
       stats: {
         homeGames:
-          homeStats?.games || 0,
+          homeStats?.games ||
+          0,
 
         awayGames:
-          awayStats?.games || 0
+          awayStats?.games ||
+          0
       }
     };
   }
@@ -445,7 +574,7 @@ function calculatePrediction(
         over15Score,
 
       reason:
-        "Tendência recente de golos"
+        "Tendência recente de 2 ou mais golos"
     },
 
     {
@@ -467,7 +596,7 @@ function calculatePrediction(
         bttsScore,
 
       reason:
-        "Frequência recente de ambas as equipas marcarem"
+        "Frequência recente de ambas marcarem"
     }
   ];
 
@@ -477,8 +606,50 @@ function calculatePrediction(
       a.score
   );
 
-  const best =
+  let best =
     candidates[0];
+
+  /*
+   * Penalização por amostra pequena.
+   */
+  const sampleSize =
+    Math.min(
+      homeStats.games,
+      awayStats.games
+    );
+
+  let penalty = 0;
+
+  if (
+    sampleSize === 3
+  ) {
+    penalty = 8;
+  } else if (
+    sampleSize === 4
+  ) {
+    penalty = 5;
+  } else if (
+    sampleSize === 5
+  ) {
+    penalty = 3;
+  }
+
+  const finalScore =
+    clamp(
+      best.score - penalty,
+      50,
+      88
+    );
+
+  /*
+   * Se a penalização alterar o resultado,
+   * mantemos o mercado, mas baixamos a confiança.
+   */
+  best = {
+    ...best,
+    score:
+      finalScore
+  };
 
   const reasons = [
     best.reason,
@@ -492,15 +663,23 @@ function calculatePrediction(
     )}`,
 
     `Over 1.5 casa: ${Math.round(
-      homeStats.over15Rate * 100
+      homeStats.over15Rate *
+        100
     )}%`,
 
     `Over 1.5 fora: ${Math.round(
-      awayStats.over15Rate * 100
+      awayStats.over15Rate *
+        100
     )}%`,
 
     `Amostra: ${homeStats.games} casa / ${awayStats.games} fora`
   ];
+
+  if (penalty > 0) {
+    reasons.push(
+      `Score ajustado devido à amostra reduzida (-${penalty})`
+    );
+  }
 
   return {
     market:
@@ -510,7 +689,9 @@ function calculatePrediction(
       best.score,
 
     level:
-      getLevel(best.score),
+      getLevel(
+        best.score
+      ),
 
     reasons,
 
@@ -553,13 +734,6 @@ function calculatePrediction(
 async function getHistoricalMatches(
   competition
 ) {
-  /*
-   * Pedimos a época atual da competição,
-   * apenas jogos terminados.
-   *
-   * Assim conseguimos uma amostra muito
-   * maior que os últimos 9 dias.
-   */
   const params =
     new URLSearchParams();
 
@@ -580,15 +754,18 @@ async function getHistoricalMatches(
     params.toString();
 
   const response =
-    await fetch(url, {
-      headers: {
-        "X-Auth-Token":
-          FOOTBALL_API_KEY,
+    await fetch(
+      url,
+      {
+        headers: {
+          "X-Auth-Token":
+            FOOTBALL_API_KEY,
 
-        Accept:
-          "application/json"
+          Accept:
+            "application/json"
+        }
       }
-    });
+    );
 
   const contentType =
     response.headers.get(
@@ -702,10 +879,11 @@ export default async function handler(
     }
 
     /*
-     * Carregar o histórico por competição.
+     * Histórico por competição.
      *
-     * Fazemos no máximo uma chamada
-     * por competição.
+     * Fazemos uma chamada por competição,
+     * de forma sequencial, para respeitar
+     * o limite de pedidos.
      */
     const historicalByCompetition =
       {};
@@ -742,7 +920,7 @@ export default async function handler(
         match.competition
           ?.code;
 
-      const historicalMatches =
+      const history =
         historicalByCompetition[
           competition
         ] || [];
@@ -770,7 +948,7 @@ export default async function handler(
 
         ...calculatePrediction(
           match,
-          historicalMatches
+          history
         )
       };
     }
