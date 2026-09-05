@@ -695,10 +695,8 @@ async function getTrends(
    * Para a equipa visitante usamos
    * apenas jogos fora.
    */
-  params.set(
-    "consider_side",
-    ""
-  );
+  params.set("window", "8");
+params.append("consider_side", "");
 
   const url =
     "https://api.football-data.org/v4/trends?" +
