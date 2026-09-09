@@ -78,6 +78,27 @@ function predictionHit(
   }
 }
 
+function formatDateUTC(date) {
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+function addDaysUTC(
+  dateString,
+  days
+) {
+  const date = new Date(
+    `${dateString}T00:00:00Z`
+  );
+
+  date.setUTCDate(
+    date.getUTCDate() + days
+  );
+
+  return formatDateUTC(date);
+}
+
 async function getFinishedMatches(
   competition,
   dateFrom,
@@ -157,6 +178,23 @@ async function getFinishedMatches(
     : [];
 }
 
+function getItemDate(item) {
+  if (
+    item?.utcDate &&
+    !Number.isNaN(
+      new Date(
+        item.utcDate
+      ).getTime()
+    )
+  ) {
+    return formatDateUTC(
+      new Date(item.utcDate)
+    );
+  }
+
+  return null;
+}
+
 export default async function handler(
   req,
   res
@@ -187,102 +225,251 @@ export default async function handler(
 
     if (!items.length) {
       return res.status(200).json({
-        results: []
+        results: [],
+        meta: {
+          checked: 0,
+          found: 0
+        }
       });
     }
 
-    const competitions = [
-      ...new Set(
-        items
-          .map(
-            (item) =>
-              item.competition
-          )
-          .filter((code) =>
-            VALID_COMPETITIONS.includes(
-              code
-            )
-          )
-      )
-    ];
+    const validItems =
+      items.filter(
+        (item) =>
+          item &&
+          VALID_COMPETITIONS.includes(
+            item.competition
+          ) &&
+          item.homeTeam &&
+          item.awayTeam &&
+          item.market
+      );
 
-    if (!competitions.length) {
+    if (!validItems.length) {
       return res.status(200).json({
-        results: []
+        results: [],
+        meta: {
+          checked: items.length,
+          valid: 0,
+          found: 0
+        }
       });
     }
 
     /*
-     * Procuramos apenas os últimos 10 dias.
-     * Isso é suficiente para os prognósticos
-     * pendentes recentes.
+     * Descobrimos o intervalo total das datas
+     * dos prognósticos pendentes.
      */
-    const today =
-      new Date();
+    const dates =
+      validItems
+        .map(getItemDate)
+        .filter(Boolean)
+        .sort();
 
-    const from =
-      new Date(today);
+    let globalFrom = null;
+    let globalTo = null;
 
-    from.setUTCDate(
-      from.getUTCDate() - 9
-    );
+    if (dates.length > 0) {
+      globalFrom = dates[0];
+      globalTo = dates[dates.length - 1];
+    } else {
+      const today =
+        new Date();
 
-    const dateFrom =
-      from
-        .toISOString()
-        .slice(0, 10);
+      globalTo =
+        formatDateUTC(today);
 
-    const dateTo =
-      today
-        .toISOString()
-        .slice(0, 10);
+      globalFrom =
+        addDaysUTC(
+          globalTo,
+          -30
+        );
+    }
 
+    /*
+     * A API aceita no máximo 10 dias por pedido.
+     * Por isso dividimos o intervalo em blocos
+     * de 9 dias.
+     */
+    const ranges = [];
+
+    let rangeStart =
+      globalFrom;
+
+    while (
+      rangeStart <= globalTo
+    ) {
+      let rangeEnd =
+        addDaysUTC(
+          rangeStart,
+          9
+        );
+
+      if (
+        rangeEnd > globalTo
+      ) {
+        rangeEnd =
+          globalTo;
+      }
+
+      ranges.push({
+        from:
+          rangeStart,
+        to:
+          rangeEnd
+      });
+
+      const nextStart =
+        addDaysUTC(
+          rangeEnd,
+          1
+        );
+
+      if (
+        nextStart >
+        globalTo
+      ) {
+        break;
+      }
+
+      rangeStart =
+        nextStart;
+    }
+
+    /*
+     * Guardamos resultados por competição
+     * para evitar chamadas repetidas.
+     */
     const matchesByCompetition =
       {};
 
+    for (
+      const competition of [
+        ...new Set(
+          validItems.map(
+            (item) =>
+              item.competition
+          )
+        )
+      ]
+    ) {
+      matchesByCompetition[
+        competition
+      ] = [];
+
+      for (
+        const range of ranges
+      ) {
+        try {
+          const matches =
+            await getFinishedMatches(
+              competition,
+              range.from,
+              range.to
+            );
+
+          matchesByCompetition[
+            competition
+          ].push(
+            ...matches
+          );
+        } catch (error) {
+          console.error(
+            "Erro resultados:",
+            competition,
+            range,
+            error.message
+          );
+        }
+      }
+    }
+
     /*
-     * Uma chamada por competição,
-     * executada sequencialmente.
+     * Remover duplicados por ID.
      */
     for (
-      const competition of competitions
+      const competition of Object.keys(
+        matchesByCompetition
+      )
     ) {
-      try {
-        matchesByCompetition[
-          competition
-        ] =
-          await getFinishedMatches(
-            competition,
-            dateFrom,
-            dateTo
-          );
-      } catch (error) {
-        console.error(
-          "Erro resultados:",
-          competition,
-          error.message
-        );
+      const unique =
+        new Map();
 
+      for (
+        const match of
         matchesByCompetition[
           competition
-        ] = [];
+        ]
+      ) {
+        unique.set(
+          String(match.id),
+          match
+        );
       }
+
+      matchesByCompetition[
+        competition
+      ] = [
+        ...unique.values()
+      ];
     }
 
     const results = [];
 
     for (
-      const item of items
+      const item of validItems
     ) {
       const history =
         matchesByCompetition[
           item.competition
         ] || [];
 
-      const found =
-        history.find(
+      const itemDate =
+        getItemDate(item);
+
+      let candidates =
+        history;
+
+      /*
+       * Primeiro tentamos restringir pela data
+       * do próprio prognóstico.
+       */
+      if (itemDate) {
+        candidates =
+          history.filter(
+            (match) =>
+              getItemDate(
+                match
+              ) === itemDate
+          );
+      }
+
+      /*
+       * Procuramos correspondência exacta de
+       * casa -> fora.
+       */
+      let found =
+        candidates.find(
           (match) =>
-            (
+            sameTeam(
+              match.homeTeam?.name,
+              item.homeTeam
+            ) &&
+            sameTeam(
+              match.awayTeam?.name,
+              item.awayTeam
+            )
+        );
+
+      /*
+       * Caso a API tenha uma pequena diferença
+       * de data/hora, tentamos novamente em todo
+       * o histórico dessa competição.
+       */
+      if (!found) {
+        found =
+          history.find(
+            (match) =>
               sameTeam(
                 match.homeTeam?.name,
                 item.homeTeam
@@ -291,8 +478,8 @@ export default async function handler(
                 match.awayTeam?.name,
                 item.awayTeam
               )
-            )
-        );
+          );
+      }
 
       if (!found) {
         continue;
@@ -330,6 +517,12 @@ export default async function handler(
           awayGoals
         );
 
+      if (
+        hit === null
+      ) {
+        continue;
+      }
+
       results.push({
         matchId:
           item.matchId,
@@ -353,7 +546,9 @@ export default async function handler(
           item.market,
 
         score:
-          Number(item.score || 0),
+          Number(
+            item.score || 0
+          ),
 
         hit
       });
@@ -361,17 +556,24 @@ export default async function handler(
 
     res.setHeader(
       "Cache-Control",
-      "s-maxage=300, stale-while-revalidate=900"
+      "no-store, max-age=0"
     );
 
     return res.status(200).json({
       results,
+
       meta: {
         checked:
           items.length,
 
+        valid:
+          validItems.length,
+
         found:
           results.length,
+
+        ranges:
+          ranges.length,
 
         updatedAt:
           new Date().toISOString()
