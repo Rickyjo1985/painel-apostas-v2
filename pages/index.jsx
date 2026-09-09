@@ -1,4 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo
+} from "react";
+
 import Head from "next/head";
 
 const TOP_LEAGUES = [
@@ -17,38 +22,59 @@ const TOP_LEAGUES = [
 const HISTORY_KEY =
   "painel_apostas_v14_history";
 
-function getLocalDate(dateString) {
-  const date = new Date(dateString);
+function getLocalDate(
+  dateString
+) {
+  const date =
+    new Date(dateString);
 
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Lisbon",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone:
+        "Europe/Lisbon",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).format(date);
 }
 
-function addDays(date, days) {
-  const result = new Date(date);
+function addDays(
+  date,
+  days
+) {
+  const result =
+    new Date(date);
 
   result.setDate(
-    result.getDate() + days
+    result.getDate() +
+      days
   );
 
   return result;
 }
 
 function getWeekendDates() {
-  const today = new Date();
+  const today =
+    new Date();
 
-  let saturday = null;
-  let sunday = null;
+  let saturday =
+    null;
 
-  for (let i = 0; i < 10; i++) {
-    const date = addDays(
-      today,
-      i
-    );
+  let sunday =
+    null;
+
+  for (
+    let i = 0;
+    i < 10;
+    i++
+  ) {
+    const date =
+      addDays(
+        today,
+        i
+      );
 
     if (
       date.getDay() === 6 &&
@@ -80,7 +106,9 @@ function getWeekendDates() {
   };
 }
 
-function formatTime(dateString) {
+function formatTime(
+  dateString
+) {
   return new Date(
     dateString
   ).toLocaleTimeString(
@@ -94,7 +122,9 @@ function formatTime(dateString) {
   );
 }
 
-function formatDate(dateString) {
+function formatDate(
+  dateString
+) {
   return new Date(
     dateString
   ).toLocaleDateString(
@@ -343,13 +373,16 @@ function MatchCard({
   let resultStatus =
     "PENDING";
 
-  let resultData = null;
+  let resultData =
+    null;
 
   if (
     historyItem?.status ===
     "HIT"
   ) {
-    resultStatus = "HIT";
+    resultStatus =
+      "HIT";
+
     resultData =
       historyItem;
   }
@@ -358,7 +391,9 @@ function MatchCard({
     historyItem?.status ===
     "MISS"
   ) {
-    resultStatus = "MISS";
+    resultStatus =
+      "MISS";
+
     resultData =
       historyItem;
   }
@@ -409,7 +444,10 @@ function MatchCard({
           <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
             {match.homeTeam?.shortName ||
               match.homeTeam?.name
-                ?.substring(0, 3)
+                ?.substring(
+                  0,
+                  3
+                )
                 .toUpperCase()}
           </div>
 
@@ -426,7 +464,10 @@ function MatchCard({
           <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
             {match.awayTeam?.shortName ||
               match.awayTeam?.name
-                ?.substring(0, 3)
+                ?.substring(
+                  0,
+                  3
+                )
                 .toUpperCase()}
           </div>
 
@@ -585,10 +626,12 @@ function HistoryStats({
                   (item) =>
                     Number(
                       item.score
-                    ) >= range.min &&
+                    ) >=
+                      range.min &&
                     Number(
                       item.score
-                    ) <= range.max
+                    ) <=
+                      range.max
                 );
 
               const rangeHits =
@@ -599,7 +642,8 @@ function HistoryStats({
                 ).length;
 
               const rate =
-                items.length > 0
+                items.length >
+                0
                   ? (
                       (rangeHits /
                         items.length) *
@@ -659,9 +703,7 @@ function HistoryStats({
         ) : (
           <div className="space-y-3">
             {completed
-              .slice(
-                -10
-              )
+              .slice(-10)
               .reverse()
               .map(
                 (item) => (
@@ -745,8 +787,10 @@ function HistoryStats({
 }
 
 export default function Home() {
-  const [matches, setMatches] =
-    useState([]);
+  const [
+    matches,
+    setMatches
+  ] = useState([]);
 
   const [
     predictions,
@@ -763,15 +807,24 @@ export default function Home() {
     setCurrentTab
   ] = useState("today");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
 
-  const [error, setError] =
-    useState(null);
+  const [
+    error,
+    setError
+  ] = useState(null);
 
-  const [lastUpdate, setLastUpdate] =
-    useState(null);
+  const [
+    lastUpdate,
+    setLastUpdate
+  ] = useState(null);
 
+  /*
+   * Carrega o histórico guardado no navegador.
+   */
   useEffect(() => {
     try {
       const stored =
@@ -789,11 +842,17 @@ export default function Home() {
         );
 
       if (
-        Array.isArray(parsed)
+        Array.isArray(
+          parsed
+        )
       ) {
-        setHistory(parsed);
+        setHistory(
+          parsed
+        );
       }
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Erro ao carregar histórico:",
         error
@@ -801,6 +860,9 @@ export default function Home() {
     }
   }, []);
 
+  /*
+   * Guarda automaticamente o histórico.
+   */
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -809,7 +871,9 @@ export default function Home() {
           history
         )
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Erro ao guardar histórico:",
         error
@@ -817,6 +881,9 @@ export default function Home() {
     }
   }, [history]);
 
+  /*
+   * Consulta resultados dos prognósticos pendentes.
+   */
   async function updateResults(
     currentHistory
   ) {
@@ -844,31 +911,37 @@ export default function Home() {
               "Content-Type":
                 "application/json"
             },
-            body: JSON.stringify({
-              items:
-                pendingItems.map(
-                  (
-                    item
-                  ) => ({
-                    matchId:
-                      item.matchId,
-                    homeTeam:
-                      item.homeTeam,
-                    awayTeam:
-                      item.awayTeam,
-                    competition:
-                      item.competition,
-                    market:
-                      item.market,
-                    score:
-                      item.score
-                  })
-                )
-            })
+            body:
+              JSON.stringify({
+                items:
+                  pendingItems.map(
+                    (item) => ({
+                      matchId:
+                        item.matchId,
+
+                      homeTeam:
+                        item.homeTeam,
+
+                      awayTeam:
+                        item.awayTeam,
+
+                      competition:
+                        item.competition,
+
+                      market:
+                        item.market,
+
+                      score:
+                        item.score
+                    })
+                  )
+              })
           }
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         return currentHistory;
       }
 
@@ -882,7 +955,9 @@ export default function Home() {
           ? data.results
           : [];
 
-      if (!results.length) {
+      if (
+        !results.length
+      ) {
         return currentHistory;
       }
 
@@ -915,22 +990,29 @@ export default function Home() {
 
           return {
             ...item,
+
             status:
               result.hit
                 ? "HIT"
                 : "MISS",
+
             homeGoals:
               result.homeGoals,
+
             awayGoals:
               result.awayGoals,
+
             completedAt:
               result.utcDate,
+
             updatedAt:
               new Date().toISOString()
           };
         }
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Erro ao verificar resultados:",
         error
@@ -940,10 +1022,18 @@ export default function Home() {
     }
   }
 
+  /*
+   * Carrega jogos e calcula prognósticos.
+   */
   async function loadData() {
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(
+        true
+      );
+
+      setError(
+        null
+      );
 
       const matchesResponse =
         await fetch(
@@ -1011,6 +1101,9 @@ export default function Home() {
         futureMatches
       );
 
+      /*
+       * Competições presentes nos jogos.
+       */
       const competitions = [
         ...new Set(
           futureMatches
@@ -1019,10 +1112,11 @@ export default function Home() {
                 match.competition
                   ?.code
             )
-            .filter((code) =>
-              TOP_LEAGUES.includes(
-                code
-              )
+            .filter(
+              (code) =>
+                TOP_LEAGUES.includes(
+                  code
+                )
             )
         )
       ];
@@ -1030,6 +1124,9 @@ export default function Home() {
       let newPredictions =
         predictions;
 
+      /*
+       * Calcula prognósticos.
+       */
       if (
         competitions.length >
           0 &&
@@ -1046,14 +1143,17 @@ export default function Home() {
             {
               method:
                 "POST",
+
               headers: {
                 "Content-Type":
                   "application/json"
               },
-              body: JSON.stringify({
-                matches:
-                  futureMatches
-              })
+
+              body:
+                JSON.stringify({
+                  matches:
+                    futureMatches
+                })
             }
           );
 
@@ -1091,18 +1191,20 @@ export default function Home() {
         );
       } else {
         setPredictions({});
-        setLastUpdate(null);
+        setLastUpdate(
+          null
+        );
         newPredictions =
           {};
       }
 
       /*
-       * Guardar os novos prognósticos
-       * no histórico.
+       * Guardar os prognósticos novos.
        */
-      let workingHistory = [
-        ...history
-      ];
+      let workingHistory =
+        [
+          ...history
+        ];
 
       Object.values(
         newPredictions
@@ -1130,68 +1232,69 @@ export default function Home() {
                 )
             );
 
-          const savedItem = {
-            matchId:
-              prediction.matchId,
+          const savedItem =
+            {
+              matchId:
+                prediction.matchId,
 
-            homeTeam:
-              prediction.homeTeam,
+              homeTeam:
+                prediction.homeTeam,
 
-            awayTeam:
-              prediction.awayTeam,
+              awayTeam:
+                prediction.awayTeam,
 
-            competition:
-              futureMatches.find(
-                (match) =>
-                  String(
-                    match.id
-                  ) ===
-                  String(
-                    prediction.matchId
-                  )
-              )?.competition
-                ?.code ||
-              "",
+              competition:
+                futureMatches.find(
+                  (match) =>
+                    String(
+                      match.id
+                    ) ===
+                    String(
+                      prediction.matchId
+                    )
+                )?.competition
+                  ?.code ||
+                "",
 
-            market:
-              prediction.market,
+              market:
+                prediction.market,
 
-            score:
-              Number(
-                prediction.score
-              ),
-
-            level:
-              prediction.level ||
-              getPredictionLevel(
+              score:
                 Number(
                   prediction.score
-                )
-              ),
+                ),
 
-            utcDate:
-              prediction.utcDate,
+              level:
+                prediction.level ||
+                getPredictionLevel(
+                  Number(
+                    prediction.score
+                  )
+                ),
 
-            status:
-              existingIndex >=
-                0 &&
-              workingHistory[
-                existingIndex
-              ]?.status
-                ? workingHistory[
-                    existingIndex
-                  ].status
-                : "PENDING",
+              utcDate:
+                prediction.utcDate,
 
-            savedAt:
-              existingIndex >=
-                0
-                ? workingHistory[
-                    existingIndex
-                  ].savedAt ||
-                  new Date().toISOString()
-                : new Date().toISOString()
-          };
+              status:
+                existingIndex >=
+                  0 &&
+                workingHistory[
+                  existingIndex
+                ]?.status
+                  ? workingHistory[
+                      existingIndex
+                    ].status
+                  : "PENDING",
+
+              savedAt:
+                existingIndex >=
+                  0
+                  ? workingHistory[
+                      existingIndex
+                    ].savedAt ||
+                    new Date().toISOString()
+                  : new Date().toISOString()
+            };
 
           if (
             existingIndex >=
@@ -1203,6 +1306,7 @@ export default function Home() {
               ...workingHistory[
                 existingIndex
               ],
+
               ...savedItem
             };
           } else {
@@ -1224,7 +1328,9 @@ export default function Home() {
       setHistory(
         updatedHistory
       );
-    } catch (err) {
+    } catch (
+      err
+    ) {
       console.error(
         "Erro:",
         err
@@ -1235,53 +1341,74 @@ export default function Home() {
           "Erro ao carregar dados."
       );
     } finally {
-      setLoading(false);
+      setLoading(
+        false
+      );
     }
   }
 
-useEffect(() => {
-  if (
-    !history.some(
-      (item) =>
-        item.status === "PENDING"
-    )
-  ) {
-    return;
-  }
+  /*
+   * CORREÇÃO PRINCIPAL:
+   *
+   * Chama loadData() automaticamente
+   * quando o portal abre.
+   */
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  let cancelled = false;
-
-  async function checkResults() {
-    const updatedHistory =
-      await updateResults(
-        history
-      );
-
+  /*
+   * Atualização automática dos resultados
+   * pendentes a cada 5 minutos.
+   */
+  useEffect(() => {
     if (
-      !cancelled &&
-      updatedHistory !== history
+      !history.some(
+        (item) =>
+          item.status ===
+          "PENDING"
+      )
     ) {
-      setHistory(
-        updatedHistory
-      );
+      return;
     }
-  }
 
-  checkResults();
+    let cancelled =
+      false;
 
-  const interval =
-    setInterval(
-      checkResults,
-      5 * 60 * 1000
-    );
+    async function checkResults() {
+      const updatedHistory =
+        await updateResults(
+          history
+        );
 
-  return () => {
-    cancelled = true;
-    clearInterval(
-      interval
-    );
-  };
-}, [history]);
+      if (
+        !cancelled &&
+        updatedHistory !==
+          history
+      ) {
+        setHistory(
+          updatedHistory
+        );
+      }
+    }
+
+    checkResults();
+
+    const interval =
+      setInterval(
+        checkResults,
+        5 * 60 * 1000
+      );
+
+    return () => {
+      cancelled =
+        true;
+
+      clearInterval(
+        interval
+      );
+    };
+  }, [history]);
 
   const groupedMatches =
     useMemo(() => {
@@ -1363,15 +1490,12 @@ useEffect(() => {
             })
           )
           .filter(
-            (item) => {
-              return (
-                item.prediction &&
-                Number(
-                  item.prediction
-                    .score
-                ) > 0
-              );
-            }
+            (item) =>
+              item.prediction &&
+              Number(
+                item.prediction
+                  .score
+              ) > 0
           )
           .sort(
             (a, b) => {
@@ -1535,27 +1659,29 @@ useEffect(() => {
               </button>
 
               <button
-                onClick={async () => {
-                  try {
-                    await fetch(
-                      "/api/logout",
-                      {
-                        method:
-                          "POST"
-                      }
-                    );
-                  } catch (
-                    error
-                  ) {
-                    console.error(
-                      "Erro ao terminar sessão:",
+                onClick={
+                  async () => {
+                    try {
+                      await fetch(
+                        "/api/logout",
+                        {
+                          method:
+                            "POST"
+                        }
+                      );
+                    } catch (
                       error
-                    );
-                  }
+                    ) {
+                      console.error(
+                        "Erro ao terminar sessão:",
+                        error
+                      );
+                    }
 
-                  window.location.href =
-                    "/login";
-                }}
+                    window.location.href =
+                      "/login";
+                  }
+                }
                 className="text-gray-400 hover:text-red-400 text-sm"
                 title="Terminar sessão"
               >
