@@ -14,17 +14,13 @@ const VALID_COMPETITIONS = [
   "ECL",
 ];
 
-/*
- * Cache em memória.
- *
- * Não é permanente entre todos os servidores da Vercel,
- * mas reduz bastante os pedidos enquanto a mesma instância
- * estiver ativa.
- */
-const historyCache = new Map();
-
-const CACHE_TIME =
+const HISTORY_CACHE_TIME =
   10 * 60 * 1000;
+
+const REQUEST_TIMEOUT =
+  8000;
+
+const historyCache = new Map();
 
 function normalizeName(name) {
   return String(name || "")
@@ -77,16 +73,10 @@ function clamp(
 ) {
   return Math.max(
     min,
-    Math.min(
-      max,
-      value
-    )
+    Math.min(max, value)
   );
 }
 
-/*
- * Obtém jogos de uma equipa.
- */
 function getTeamMatches(
   matches,
   teamName,
@@ -111,7 +101,10 @@ function getTeamMatches(
           teamName
         );
 
-      if (!isHome && !isAway) {
+      if (
+        !isHome &&
+        !isAway
+      ) {
         return false;
       }
 
@@ -138,9 +131,6 @@ function getTeamMatches(
     );
 }
 
-/*
- * Calcula estatísticas.
- */
 function calculateTeamStats(
   matches,
   teamName
@@ -155,7 +145,6 @@ function calculateTeamStats(
   let losses = 0;
 
   let points = 0;
-
   let goalsFor = 0;
   let goalsAgainst = 0;
 
@@ -277,14 +266,6 @@ function calculateTeamStats(
   };
 }
 
-/*
- * Constrói as estatísticas usando:
- *
- * 1. jogos HOME/AWAY
- * 2. completa com jogos gerais recentes
- *
- * Máximo: 8 jogos.
- */
 function buildTeamStats(
   matches,
   teamName,
@@ -305,7 +286,10 @@ function buildTeamStats(
     );
 
   const selected = [
-    ...venueMatches.slice(0, 8),
+    ...venueMatches.slice(
+      0,
+      8
+    ),
   ];
 
   if (
@@ -340,9 +324,6 @@ function buildTeamStats(
   );
 }
 
-/*
- * Score Over 1.5.
- */
 function calculateOver15Score(
   home,
   away
@@ -406,9 +387,6 @@ function calculateOver15Score(
   );
 }
 
-/*
- * Score de 1 / X2 / 1X / 2.
- */
 function calculateResultPrediction(
   home,
   away
@@ -473,9 +451,6 @@ function calculateResultPrediction(
   };
 }
 
-/*
- * Score Ambas Marcam.
- */
 function calculateBTTSScore(
   home,
   away
@@ -511,9 +486,6 @@ function getLevel(score) {
   return "BAIXA";
 }
 
-/*
- * Calcula o melhor prognóstico.
- */
 function calculatePrediction(
   match,
   history
@@ -686,7 +658,9 @@ function calculatePrediction(
     `Amostra: ${homeStats.games} casa / ${awayStats.games} fora`,
   ];
 
-  if (penalty > 0) {
+  if (
+    penalty > 0
+  ) {
     reasons.push(
       `Score ajustado devido à amostra reduzida (-${penalty})`
     );
@@ -743,11 +717,38 @@ function calculatePrediction(
 }
 
 /*
- * Obtém o histórico de uma competição.
- *
- * IMPORTANTE:
- * Existe cache de 10 minutos.
+ * Fetch com timeout.
  */
+async function fetchWithTimeout(
+  url,
+  options = {},
+  timeout =
+    REQUEST_TIMEOUT
+) {
+  const controller =
+    new AbortController();
+
+  const timer =
+    setTimeout(
+      () =>
+        controller.abort(),
+      timeout
+    );
+
+  try {
+    return await fetch(
+      url,
+      {
+        ...options,
+        signal:
+          controller.signal,
+      }
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function getHistoricalMatches(
   competition
 ) {
@@ -760,7 +761,7 @@ async function getHistoricalMatches(
     cached &&
     Date.now() -
       cached.timestamp <
-      CACHE_TIME
+      HISTORY_CACHE_TIME
   ) {
     return cached.matches;
   }
@@ -784,22 +785,35 @@ async function getHistoricalMatches(
     "/matches?" +
     params.toString();
 
-  const response =
-    await fetch(
-      url,
-      {
-        headers: {
-          "X-Auth-Token":
-            FOOTBALL_API_KEY,
+  let response;
 
-          Accept:
-            "application/json",
+  try {
+    response =
+      await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            "X-Auth-Token":
+              FOOTBALL_API_KEY,
+
+            Accept:
+              "application/json",
+          },
         },
+        REQUEST_TIMEOUT
+      );
+  } catch (error) {
+    if (
+      error?.name ===
+      "AbortError"
+    ) {
+      throw new Error(
+        `Timeout ao consultar ${competition}.`
+      );
+    }
 
-        cache:
-          "no-store",
-      }
-    );
+    throw error;
+  }
 
   const contentType =
     response.headers.get(
@@ -899,9 +913,6 @@ export default async function handler(
       });
     }
 
-    /*
-     * Só usamos competições válidas.
-     */
     const competitions = [
       ...new Set(
         matches
@@ -934,15 +945,7 @@ export default async function handler(
     }
 
     /*
-     * IMPORTANTE:
-     *
-     * Limitamos a 6 competições por cálculo.
-     * Isto evita que o painel tente fazer
-     * 10 chamadas de histórico numa única
-     * actualização.
-     *
-     * As competições são escolhidas pela
-     * ordem em que aparecem nos jogos.
+     * Máximo de 6 competições numa atualização.
      */
     const selectedCompetitions =
       competitions.slice(
@@ -950,14 +953,16 @@ export default async function handler(
         6
       );
 
-    /*
-     * Histórico por competição.
-     *
-     * Sequencial para respeitar o limite da API.
-     */
     const historicalByCompetition =
       {};
 
+    /*
+     * Cada competição é consultada
+     * individualmente.
+     *
+     * Se uma consulta falhar ou exceder
+     * o timeout, o restante continua.
+     */
     for (
       const competition of
         selectedCompetitions
@@ -971,8 +976,7 @@ export default async function handler(
           );
       } catch (error) {
         console.error(
-          "Erro histórico:",
-          competition,
+          `Erro histórico ${competition}:`,
           error.message
         );
 
@@ -985,10 +989,6 @@ export default async function handler(
     const predictions =
       {};
 
-    /*
-     * Calcula apenas jogos das competições
-     * cujo histórico foi carregado.
-     */
     for (
       const match of matches
     ) {
