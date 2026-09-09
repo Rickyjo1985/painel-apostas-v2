@@ -797,10 +797,34 @@ export default function Home() {
     setPredictions
   ] = useState({});
 
-  const [
-    history,
-    setHistory
-  ] = useState([]);
+const [history, setHistory] = useState(() => {
+  try {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    const stored =
+      localStorage.getItem(HISTORY_KEY);
+
+    if (!stored) {
+      return [];
+    }
+
+    const parsed =
+      JSON.parse(stored);
+
+    return Array.isArray(parsed)
+      ? parsed
+      : [];
+  } catch (error) {
+    console.error(
+      "Erro ao carregar histórico inicial:",
+      error
+    );
+
+    return [];
+  }
+});
 
   const [
     currentTab,
