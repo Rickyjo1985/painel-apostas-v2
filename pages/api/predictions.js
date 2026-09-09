@@ -11,14 +11,29 @@ const VALID_COMPETITIONS = [
   "ELC",
   "CL",
   "EL",
-  "ECL"
+  "ECL",
 ];
+
+/*
+ * Cache em memória.
+ *
+ * Não é permanente entre todos os servidores da Vercel,
+ * mas reduz bastante os pedidos enquanto a mesma instância
+ * estiver ativa.
+ */
+const historyCache = new Map();
+
+const CACHE_TIME =
+  10 * 60 * 1000;
 
 function normalizeName(name) {
   return String(name || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
     .replace(
       /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
       " "
@@ -62,21 +77,22 @@ function clamp(
 ) {
   return Math.max(
     min,
-    Math.min(max, value)
+    Math.min(
+      max,
+      value
+    )
   );
 }
 
 /*
- * Obtém os jogos terminados da equipa.
- * Primeiro tenta os jogos no contexto pedido:
- * HOME ou AWAY.
+ * Obtém jogos de uma equipa.
  */
 function getTeamMatches(
   matches,
   teamName,
   venue
 ) {
-  const all = matches
+  return matches
     .filter(
       (match) =>
         match.status ===
@@ -120,12 +136,10 @@ function getTeamMatches(
         new Date(b.utcDate) -
         new Date(a.utcDate)
     );
-
-  return all;
 }
 
 /*
- * Calcula estatísticas de uma equipa.
+ * Calcula estatísticas.
  */
 function calculateTeamStats(
   matches,
@@ -141,6 +155,7 @@ function calculateTeamStats(
   let losses = 0;
 
   let points = 0;
+
   let goalsFor = 0;
   let goalsAgainst = 0;
 
@@ -148,7 +163,9 @@ function calculateTeamStats(
   let over25 = 0;
   let btts = 0;
 
-  for (const match of matches) {
+  for (
+    const match of matches
+  ) {
     const isHome =
       sameTeam(
         match.homeTeam?.name,
@@ -157,12 +174,16 @@ function calculateTeamStats(
 
     const homeGoals =
       Number(
-        match.score?.fullTime?.home
+        match.score
+          ?.fullTime
+          ?.home
       );
 
     const awayGoals =
       Number(
-        match.score?.fullTime?.away
+        match.score
+          ?.fullTime
+          ?.away
       );
 
     if (
@@ -192,7 +213,9 @@ function calculateTeamStats(
     if (gf > ga) {
       wins++;
       points += 3;
-    } else if (gf === ga) {
+    } else if (
+      gf === ga
+    ) {
       draws++;
       points += 1;
     } else {
@@ -250,14 +273,17 @@ function calculateTeamStats(
       over25 / games,
 
     bttsRate:
-      btts / games
+      btts / games,
   };
 }
 
 /*
- * Tenta primeiro HOME/AWAY.
- * Se não houver pelo menos 3 jogos,
- * completa com jogos gerais recentes.
+ * Constrói as estatísticas usando:
+ *
+ * 1. jogos HOME/AWAY
+ * 2. completa com jogos gerais recentes
+ *
+ * Máximo: 8 jogos.
  */
 function buildTeamStats(
   matches,
@@ -279,18 +305,15 @@ function buildTeamStats(
     );
 
   const selected = [
-    ...venueMatches.slice(
-      0,
-      8
-    )
+    ...venueMatches.slice(0, 8),
   ];
 
-  /*
-   * Completar com jogos gerais
-   * que ainda não estejam presentes.
-   */
-  if (selected.length < 8) {
-    for (const match of generalMatches) {
+  if (
+    selected.length < 8
+  ) {
+    for (
+      const match of generalMatches
+    ) {
       if (
         selected.some(
           (item) =>
@@ -317,6 +340,9 @@ function buildTeamStats(
   );
 }
 
+/*
+ * Score Over 1.5.
+ */
 function calculateOver15Score(
   home,
   away
@@ -341,16 +367,10 @@ function calculateOver15Score(
 
   let score = 55;
 
-  /*
-   * Tendência Over 1.5.
-   */
   score +=
     (overRate - 0.5) *
     42;
 
-  /*
-   * Média de golos.
-   */
   if (
     goalAverage >= 2.7
   ) {
@@ -369,9 +389,6 @@ function calculateOver15Score(
     score += 2;
   }
 
-  /*
-   * Capacidade ofensiva.
-   */
   if (
     scoringAverage >= 1.5
   ) {
@@ -389,6 +406,9 @@ function calculateOver15Score(
   );
 }
 
+/*
+ * Score de 1 / X2 / 1X / 2.
+ */
 function calculateResultPrediction(
   home,
   away
@@ -416,7 +436,7 @@ function calculateResultPrediction(
   ) {
     return {
       market: "1",
-      score: 72
+      score: 72,
     };
   }
 
@@ -425,7 +445,7 @@ function calculateResultPrediction(
   ) {
     return {
       market: "1X",
-      score: 68
+      score: 68,
     };
   }
 
@@ -434,7 +454,7 @@ function calculateResultPrediction(
   ) {
     return {
       market: "2",
-      score: 72
+      score: 72,
     };
   }
 
@@ -443,16 +463,19 @@ function calculateResultPrediction(
   ) {
     return {
       market: "X2",
-      score: 68
+      score: 68,
     };
   }
 
   return {
     market: "1X",
-    score: 61
+    score: 61,
   };
 }
 
+/*
+ * Score Ambas Marcam.
+ */
 function calculateBTTSScore(
   home,
   away
@@ -488,6 +511,9 @@ function getLevel(score) {
   return "BAIXA";
 }
 
+/*
+ * Calcula o melhor prognóstico.
+ */
 function calculatePrediction(
   match,
   history
@@ -506,9 +532,6 @@ function calculatePrediction(
       "AWAY"
     );
 
-  /*
-   * Agora apenas precisamos de 3 jogos.
-   */
   if (
     !homeStats ||
     !awayStats ||
@@ -526,25 +549,21 @@ function calculatePrediction(
 
       reasons: [
         `Histórico casa: ${
-          homeStats?.games ||
-          0
+          homeStats?.games || 0
         } jogos`,
 
         `Histórico fora: ${
-          awayStats?.games ||
-          0
-        } jogos`
+          awayStats?.games || 0
+        } jogos`,
       ],
 
       stats: {
         homeGames:
-          homeStats?.games ||
-          0,
+          homeStats?.games || 0,
 
         awayGames:
-          awayStats?.games ||
-          0
-      }
+          awayStats?.games || 0,
+      },
     };
   }
 
@@ -575,7 +594,7 @@ function calculatePrediction(
         over15Score,
 
       reason:
-        "Tendência recente de 2 ou mais golos"
+        "Tendência recente de 2 ou mais golos",
     },
 
     {
@@ -586,7 +605,7 @@ function calculatePrediction(
         result.score,
 
       reason:
-        "Força e forma recente"
+        "Força e forma recente",
     },
 
     {
@@ -597,8 +616,8 @@ function calculatePrediction(
         bttsScore,
 
       reason:
-        "Frequência recente de ambas marcarem"
-    }
+        "Frequência recente de ambas marcarem",
+    },
   ];
 
   candidates.sort(
@@ -610,9 +629,6 @@ function calculatePrediction(
   let best =
     candidates[0];
 
-  /*
-   * Penalização por amostra pequena.
-   */
   const sampleSize =
     Math.min(
       homeStats.games,
@@ -635,21 +651,15 @@ function calculatePrediction(
     penalty = 3;
   }
 
-  const finalScore =
-    clamp(
-      best.score - penalty,
-      50,
-      88
-    );
-
-  /*
-   * Se a penalização alterar o resultado,
-   * mantemos o mercado, mas baixamos a confiança.
-   */
   best = {
     ...best,
-    score:
-      finalScore
+
+    score: clamp(
+      best.score -
+        penalty,
+      50,
+      88
+    ),
   };
 
   const reasons = [
@@ -673,7 +683,7 @@ function calculatePrediction(
         100
     )}%`,
 
-    `Amostra: ${homeStats.games} casa / ${awayStats.games} fora`
+    `Amostra: ${homeStats.games} casa / ${awayStats.games} fora`,
   ];
 
   if (penalty > 0) {
@@ -727,14 +737,34 @@ function calculatePrediction(
           awayStats.goalsForAvg.toFixed(
             2
           )
-        )
-    }
+        ),
+    },
   };
 }
 
+/*
+ * Obtém o histórico de uma competição.
+ *
+ * IMPORTANTE:
+ * Existe cache de 10 minutos.
+ */
 async function getHistoricalMatches(
   competition
 ) {
+  const cached =
+    historyCache.get(
+      competition
+    );
+
+  if (
+    cached &&
+    Date.now() -
+      cached.timestamp <
+      CACHE_TIME
+  ) {
+    return cached.matches;
+  }
+
   const params =
     new URLSearchParams();
 
@@ -763,8 +793,11 @@ async function getHistoricalMatches(
             FOOTBALL_API_KEY,
 
           Accept:
-            "application/json"
-        }
+            "application/json",
+        },
+
+        cache:
+          "no-store",
       }
     );
 
@@ -799,18 +832,30 @@ async function getHistoricalMatches(
 
     throw new Error(
       typeof data ===
-        "string"
+      "string"
         ? data
         : data?.message ||
           `Erro HTTP ${response.status}`
     );
   }
 
-  return Array.isArray(
-    data?.matches
-  )
-    ? data.matches
-    : [];
+  const matches =
+    Array.isArray(
+      data?.matches
+    )
+      ? data.matches
+      : [];
+
+  historyCache.set(
+    competition,
+    {
+      matches,
+      timestamp:
+        Date.now(),
+    }
+  );
+
+  return matches;
 }
 
 export default async function handler(
@@ -822,14 +867,14 @@ export default async function handler(
   ) {
     return res.status(405).json({
       error:
-        "Método não permitido."
+        "Método não permitido.",
     });
   }
 
   if (!FOOTBALL_API_KEY) {
     return res.status(500).json({
       error:
-        "FOOTBALL_DATA_API_KEY não está configurada."
+        "FOOTBALL_DATA_API_KEY não está configurada.",
     });
   }
 
@@ -844,14 +889,19 @@ export default async function handler(
     if (!matches.length) {
       return res.status(200).json({
         predictions: {},
+
         meta: {
           predictions: 0,
+
           updatedAt:
-            new Date().toISOString()
-        }
+            new Date().toISOString(),
+        },
       });
     }
 
+    /*
+     * Só usamos competições válidas.
+     */
     const competitions = [
       ...new Set(
         matches
@@ -865,32 +915,52 @@ export default async function handler(
               code
             )
           )
-      )
+      ),
     ];
 
-    if (!competitions.length) {
+    if (
+      !competitions.length
+    ) {
       return res.status(200).json({
         predictions: {},
+
         meta: {
           predictions: 0,
+
           updatedAt:
-            new Date().toISOString()
-        }
+            new Date().toISOString(),
+        },
       });
     }
 
     /*
+     * IMPORTANTE:
+     *
+     * Limitamos a 6 competições por cálculo.
+     * Isto evita que o painel tente fazer
+     * 10 chamadas de histórico numa única
+     * actualização.
+     *
+     * As competições são escolhidas pela
+     * ordem em que aparecem nos jogos.
+     */
+    const selectedCompetitions =
+      competitions.slice(
+        0,
+        6
+      );
+
+    /*
      * Histórico por competição.
      *
-     * Fazemos uma chamada por competição,
-     * de forma sequencial, para respeitar
-     * o limite de pedidos.
+     * Sequencial para respeitar o limite da API.
      */
     const historicalByCompetition =
       {};
 
     for (
-      const competition of competitions
+      const competition of
+        selectedCompetitions
     ) {
       try {
         historicalByCompetition[
@@ -901,7 +971,7 @@ export default async function handler(
           );
       } catch (error) {
         console.error(
-          "Erro histórico",
+          "Erro histórico:",
           competition,
           error.message
         );
@@ -912,14 +982,66 @@ export default async function handler(
       }
     }
 
-    const predictions = {};
+    const predictions =
+      {};
 
+    /*
+     * Calcula apenas jogos das competições
+     * cujo histórico foi carregado.
+     */
     for (
       const match of matches
     ) {
       const competition =
         match.competition
           ?.code;
+
+      if (
+        !selectedCompetitions.includes(
+          competition
+        )
+      ) {
+        predictions[
+          String(match.id)
+        ] = {
+          matchId:
+            match.id,
+
+          homeTeam:
+            match.homeTeam
+              ?.name,
+
+          awayTeam:
+            match.awayTeam
+              ?.name,
+
+          competition:
+            match.competition
+              ?.name,
+
+          utcDate:
+            match.utcDate,
+
+          market:
+            "Dados insuficientes",
+
+          score: 0,
+
+          level:
+            "DADOS INSUFICIENTES",
+
+          reasons: [
+            "Competição temporariamente fora da janela de cálculo.",
+          ],
+
+          stats: {
+            homeGames: 0,
+            awayGames: 0,
+          },
+        };
+
+        continue;
+      }
 
       const history =
         historicalByCompetition[
@@ -950,7 +1072,7 @@ export default async function handler(
         ...calculatePrediction(
           match,
           history
-        )
+        ),
       };
     }
 
@@ -966,11 +1088,17 @@ export default async function handler(
         competitions:
           competitions.length,
 
+        competitionsCalculated:
+          selectedCompetitions.length,
+
         historyMatches:
           Object.values(
             historicalByCompetition
           ).reduce(
-            (total, list) =>
+            (
+              total,
+              list
+            ) =>
               total +
               list.length,
             0
@@ -982,8 +1110,8 @@ export default async function handler(
           ).length,
 
         updatedAt:
-          new Date().toISOString()
-      }
+          new Date().toISOString(),
+      },
     });
   } catch (error) {
     console.error(
@@ -994,7 +1122,7 @@ export default async function handler(
     return res.status(500).json({
       error:
         error.message ||
-        "Erro interno ao calcular prognósticos."
+        "Erro interno ao calcular prognósticos.",
     });
   }
 }
