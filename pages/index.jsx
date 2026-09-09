@@ -875,9 +875,215 @@ const [history, setHistory] = useState(() => {
   /*
    * Consulta resultados dos prognósticos pendentes.
    */
-  async function updateResults(
-    currentHistory
+async function updateResults(
+  currentHistory
+) {
+  const now =
+    Date.now();
+
+  /*
+   * Só verificamos jogos que já tiveram
+   * tempo suficiente para terminar.
+   *
+   * 150 minutos = 2h30 após o início.
+   */
+  const CHECK_AFTER_MINUTES = 150;
+
+  const pendingItems =
+    currentHistory.filter(
+      (item) => {
+        if (
+          item.status !==
+          "PENDING"
+        ) {
+          return false;
+        }
+
+        if (
+          !item.utcDate
+        ) {
+          return false;
+        }
+
+        const kickoff =
+          new Date(
+            item.utcDate
+          ).getTime();
+
+        if (
+          Number.isNaN(
+            kickoff
+          )
+        ) {
+          return false;
+        }
+
+        return (
+          now >=
+          kickoff +
+            CHECK_AFTER_MINUTES *
+              60 *
+              1000
+        );
+      }
+    );
+
+  /*
+   * Não fazemos qualquer pedido se ainda
+   * não houver jogos suficientemente antigos.
+   */
+  if (
+    !pendingItems.length
   ) {
+    return currentHistory;
+  }
+
+  try {
+    const response =
+      await fetch(
+        "/api/results",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              items:
+                pendingItems.map(
+                  (item) => ({
+                    matchId:
+                      item.matchId,
+
+                    homeTeam:
+                      item.homeTeam,
+
+                    awayTeam:
+                      item.awayTeam,
+
+                    competition:
+                      item.competition,
+
+                    market:
+                      item.market,
+
+                    score:
+                      item.score,
+
+                    utcDate:
+                      item.utcDate
+                  })
+                )
+            })
+        }
+      );
+
+    /*
+     * 429 = limite temporário da API.
+     * Mantemos tudo PENDING e não alteramos
+     * o histórico.
+     */
+    if (
+      response.status ===
+      429
+    ) {
+      console.warn(
+        "API de resultados temporariamente limitada."
+      );
+
+      return currentHistory;
+    }
+
+    if (
+      !response.ok
+    ) {
+      return currentHistory;
+    }
+
+    const data =
+      await response.json();
+
+    const results =
+      Array.isArray(
+        data.results
+      )
+        ? data.results
+        : [];
+
+    if (
+      !results.length
+    ) {
+      return currentHistory;
+    }
+
+    const resultMap =
+      new Map();
+
+    results.forEach(
+      (result) => {
+        resultMap.set(
+          String(
+            result.matchId
+          ),
+          result
+        );
+      }
+    );
+
+    return currentHistory.map(
+      (item) => {
+        const result =
+          resultMap.get(
+            String(
+              item.matchId
+            )
+          );
+
+        /*
+         * Sem resultado encontrado:
+         * mantém exactamente o estado actual.
+         */
+        if (!result) {
+          return item;
+        }
+
+        return {
+          ...item,
+
+          status:
+            result.hit
+              ? "HIT"
+              : "MISS",
+
+          homeGoals:
+            result.homeGoals,
+
+          awayGoals:
+            result.awayGoals,
+
+          completedAt:
+            result.utcDate,
+
+          updatedAt:
+            new Date().toISOString()
+        };
+      }
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "Erro ao verificar resultados:",
+      error
+    );
+
+    return currentHistory;
+  }
+}
     const pendingItems =
       currentHistory.filter(
         (item) =>
@@ -1385,11 +1591,11 @@ const [history, setHistory] = useState(() => {
 
     checkResults();
 
-    const interval =
-      setInterval(
-        checkResults,
-        5 * 60 * 1000
-      );
+const interval =
+  setInterval(
+    checkResults,
+    15 * 60 * 1000
+  );
 
     return () => {
       cancelled =
