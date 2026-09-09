@@ -14,23 +14,45 @@ const VALID_COMPETITIONS = [
   "ECL"
 ];
 
+/*
+ * Cache em memória para evitar repetir exactamente
+ * a mesma consulta durante alguns minutos.
+ */
+const CACHE_TTL =
+  5 * 60 * 1000;
+
+const finishedMatchesCache =
+  new Map();
+
 function normalizeName(name) {
   return String(name || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
     .replace(
       /\b(fc|cf|sc|ac|afc|cd|se|club|football|clube)\b/g,
       " "
     )
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[^a-z0-9\s]/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
 function sameTeam(a, b) {
-  const x = normalizeName(a);
-  const y = normalizeName(b);
+  const x =
+    normalizeName(a);
+
+  const y =
+    normalizeName(b);
 
   if (!x || !y) {
     return false;
@@ -88,15 +110,124 @@ function addDaysUTC(
   dateString,
   days
 ) {
-  const date = new Date(
-    `${dateString}T00:00:00Z`
-  );
+  const date =
+    new Date(
+      `${dateString}T00:00:00Z`
+    );
 
   date.setUTCDate(
     date.getUTCDate() + days
   );
 
-  return formatDateUTC(date);
+  return formatDateUTC(
+    date
+  );
+}
+
+function dateDiffUTC(
+  fromDate,
+  toDate
+) {
+  const from =
+    new Date(
+      `${fromDate}T00:00:00Z`
+    );
+
+  const to =
+    new Date(
+      `${toDate}T00:00:00Z`
+    );
+
+  return Math.round(
+    (
+      to.getTime() -
+      from.getTime()
+    ) /
+      86400000
+  );
+}
+
+/*
+ * Cria intervalos de no máximo 10 dias,
+ * mas apenas para as datas realmente existentes
+ * nos prognósticos pendentes.
+ */
+function buildRanges(
+  dates
+) {
+  const uniqueDates = [
+    ...new Set(
+      dates.filter(Boolean)
+    )
+  ].sort();
+
+  if (
+    uniqueDates.length === 0
+  ) {
+    return [];
+  }
+
+  const ranges = [];
+
+  let rangeStart =
+    uniqueDates[0];
+
+  let rangeEnd =
+    uniqueDates[0];
+
+  for (
+    let i = 1;
+    i < uniqueDates.length;
+    i++
+  ) {
+    const currentDate =
+      uniqueDates[i];
+
+    /*
+     * 9 dias de diferença =
+     * 10 dias inclusivos.
+     */
+    if (
+      dateDiffUTC(
+        rangeStart,
+        currentDate
+      ) <= 9
+    ) {
+      rangeEnd =
+        currentDate;
+      continue;
+    }
+
+    ranges.push({
+      from: rangeStart,
+      to: rangeEnd
+    });
+
+    rangeStart =
+      currentDate;
+
+    rangeEnd =
+      currentDate;
+  }
+
+  ranges.push({
+    from: rangeStart,
+    to: rangeEnd
+  });
+
+  return ranges;
+}
+
+function getCacheKey(
+  competition,
+  dateFrom,
+  dateTo
+) {
+  return [
+    competition,
+    dateFrom,
+    dateTo
+  ].join("|");
 }
 
 async function getFinishedMatches(
@@ -104,6 +235,27 @@ async function getFinishedMatches(
   dateFrom,
   dateTo
 ) {
+  const cacheKey =
+    getCacheKey(
+      competition,
+      dateFrom,
+      dateTo
+    );
+
+  const cached =
+    finishedMatchesCache.get(
+      cacheKey
+    );
+
+  if (
+    cached &&
+    Date.now() -
+      cached.timestamp <
+      CACHE_TTL
+  ) {
+    return cached.matches;
+  }
+
   const params =
     new URLSearchParams();
 
@@ -163,19 +315,39 @@ async function getFinishedMatches(
   }
 
   if (!response.ok) {
-    throw new Error(
-      typeof data === "string"
+    const message =
+      typeof data ===
+      "string"
         ? data
         : data?.message ||
-          `Erro HTTP ${response.status}`
-    );
+          `Erro HTTP ${response.status}`;
+
+    const error =
+      new Error(message);
+
+    error.status =
+      response.status;
+
+    throw error;
   }
 
-  return Array.isArray(
-    data?.matches
-  )
-    ? data.matches
-    : [];
+  const matches =
+    Array.isArray(
+      data?.matches
+    )
+      ? data.matches
+      : [];
+
+  finishedMatchesCache.set(
+    cacheKey,
+    {
+      timestamp:
+        Date.now(),
+      matches
+    }
+  );
+
+  return matches;
 }
 
 function getItemDate(item) {
@@ -228,6 +400,7 @@ export default async function handler(
         results: [],
         meta: {
           checked: 0,
+          valid: 0,
           found: 0
         }
       });
@@ -257,102 +430,92 @@ export default async function handler(
     }
 
     /*
-     * Descobrimos o intervalo total das datas
-     * dos prognósticos pendentes.
+     * Hora/data actual em UTC.
      */
-    const dates =
-      validItems
-        .map(getItemDate)
-        .filter(Boolean)
-        .sort();
+    const now =
+      new Date();
 
-    let globalFrom = null;
-    let globalTo = null;
-
-    if (dates.length > 0) {
-      globalFrom = dates[0];
-      globalTo = dates[dates.length - 1];
-    } else {
-      const today =
-        new Date();
-
-      globalTo =
-        formatDateUTC(today);
-
-      globalFrom =
-        addDaysUTC(
-          globalTo,
-          -30
-        );
-    }
+    const todayUTC =
+      formatDateUTC(now);
 
     /*
-     * A API aceita no máximo 10 dias por pedido.
-     * Por isso dividimos o intervalo em blocos
-     * de 9 dias.
+     * Agrupamos os prognósticos por competição.
      */
-    const ranges = [];
+    const itemsByCompetition =
+      {};
 
-    let rangeStart =
-      globalFrom;
-
-    while (
-      rangeStart <= globalTo
+    for (
+      const item of validItems
     ) {
-      let rangeEnd =
-        addDaysUTC(
-          rangeStart,
-          9
-        );
+      const competition =
+        item.competition;
 
+      const itemDate =
+        getItemDate(item);
+
+      /*
+       * Não procuramos resultados de jogos
+       * que ainda estão no futuro.
+       */
       if (
-        rangeEnd > globalTo
+        itemDate &&
+        itemDate > todayUTC
       ) {
-        rangeEnd =
-          globalTo;
+        continue;
       }
 
-      ranges.push({
-        from:
-          rangeStart,
-        to:
-          rangeEnd
-      });
-
-      const nextStart =
-        addDaysUTC(
-          rangeEnd,
-          1
-        );
-
       if (
-        nextStart >
-        globalTo
+        !itemsByCompetition[
+          competition
+        ]
       ) {
-        break;
+        itemsByCompetition[
+          competition
+        ] = [];
       }
 
-      rangeStart =
-        nextStart;
+      itemsByCompetition[
+        competition
+      ].push(item);
     }
 
     /*
-     * Guardamos resultados por competição
-     * para evitar chamadas repetidas.
+     * Resultados encontrados por competição.
      */
     const matchesByCompetition =
       {};
 
+    /*
+     * Informação de diagnóstico.
+     */
+    let apiRequests = 0;
+
+    /*
+     * Consultamos apenas as datas necessárias
+     * para cada competição.
+     */
     for (
-      const competition of [
-        ...new Set(
-          validItems.map(
-            (item) =>
-              item.competition
-          )
-        )
-      ]
+      const competition of Object.keys(
+        itemsByCompetition
+      )
     ) {
+      const competitionItems =
+        itemsByCompetition[
+          competition
+        ];
+
+      const dates =
+        competitionItems
+          .map(
+            getItemDate
+          )
+          .filter(Boolean);
+
+      const ranges =
+        buildRanges(
+          dates
+        );
+
       matchesByCompetition[
         competition
       ] = [];
@@ -361,6 +524,8 @@ export default async function handler(
         const range of ranges
       ) {
         try {
+          apiRequests++;
+
           const matches =
             await getFinishedMatches(
               competition,
@@ -380,6 +545,44 @@ export default async function handler(
             range,
             error.message
           );
+
+          /*
+           * Se for limite da API,
+           * devolvemos o erro ao frontend.
+           */
+          if (
+            error.status ===
+              429 ||
+            /rate limit|too many requests|limit/i.test(
+              error.message
+            )
+          ) {
+            res.setHeader(
+              "Cache-Control",
+              "no-store, max-age=0"
+            );
+
+            return res
+              .status(429)
+              .json({
+                error:
+                  "football-data.org atingiu temporariamente o limite de pedidos.",
+                results: [],
+                meta: {
+                  checked:
+                    items.length,
+                  valid:
+                    validItems.length,
+                  found: 0,
+                  apiRequests
+                }
+              });
+          }
+
+          /*
+           * Para outros erros, não destruímos
+           * os restantes resultados.
+           */
         }
       }
     }
@@ -416,23 +619,43 @@ export default async function handler(
 
     const results = [];
 
+    /*
+     * Apenas avaliamos itens que têm
+     * resultados efectivamente encontrados.
+     */
     for (
       const item of validItems
     ) {
+      const itemDate =
+        getItemDate(item);
+
+      /*
+       * Jogos futuros ainda não podem ser
+       * concluídos.
+       */
+      if (
+        itemDate &&
+        itemDate > todayUTC
+      ) {
+        continue;
+      }
+
       const history =
         matchesByCompetition[
           item.competition
         ] || [];
 
-      const itemDate =
-        getItemDate(item);
+      if (
+        history.length === 0
+      ) {
+        continue;
+      }
 
       let candidates =
         history;
 
       /*
-       * Primeiro tentamos restringir pela data
-       * do próprio prognóstico.
+       * Primeiro pela mesma data UTC.
        */
       if (itemDate) {
         candidates =
@@ -445,8 +668,7 @@ export default async function handler(
       }
 
       /*
-       * Procuramos correspondência exacta de
-       * casa -> fora.
+       * Procuramos casa -> fora.
        */
       let found =
         candidates.find(
@@ -462,9 +684,8 @@ export default async function handler(
         );
 
       /*
-       * Caso a API tenha uma pequena diferença
-       * de data/hora, tentamos novamente em todo
-       * o histórico dessa competição.
+       * Fallback caso exista pequena diferença
+       * temporal entre os registos.
        */
       if (!found) {
         found =
@@ -554,6 +775,10 @@ export default async function handler(
       });
     }
 
+    /*
+     * Não deixar caches HTTP antigos
+     * interferirem na verificação.
+     */
     res.setHeader(
       "Cache-Control",
       "no-store, max-age=0"
@@ -572,8 +797,7 @@ export default async function handler(
         found:
           results.length,
 
-        ranges:
-          ranges.length,
+        apiRequests,
 
         updatedAt:
           new Date().toISOString()
@@ -585,10 +809,16 @@ export default async function handler(
       error
     );
 
-    return res.status(500).json({
+    return res.status(
+      error.status === 429
+        ? 429
+        : 500
+    ).json({
       error:
         error.message ||
-        "Erro ao verificar resultados."
+        "Erro ao verificar resultados.",
+
+      results: []
     });
   }
 }
