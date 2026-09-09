@@ -22,17 +22,17 @@ const TOP_LEAGUES = [
 const HISTORY_KEY =
   "painel_apostas_v14_history";
 
-function getLocalDate(
-  dateString
-) {
-  const date =
-    new Date(dateString);
+/* =========================================================
+   DATAS / TIMEZONE
+========================================================= */
+
+function getLocalDate(dateString) {
+  const date = new Date(dateString);
 
   return new Intl.DateTimeFormat(
     "en-CA",
     {
-      timeZone:
-        "Europe/Lisbon",
+      timeZone: "Europe/Lisbon",
       year: "numeric",
       month: "2-digit",
       day: "2-digit"
@@ -40,62 +40,40 @@ function getLocalDate(
   ).format(date);
 }
 
-function addDays(
-  date,
-  days
-) {
-  const result =
-    new Date(date);
+function addDays(date, days) {
+  const result = new Date(date);
 
   result.setDate(
-    result.getDate() +
-      days
+    result.getDate() + days
   );
 
   return result;
 }
 
 function getWeekendDates() {
-  const today =
-    new Date();
+  const today = new Date();
 
-  let saturday =
-    null;
+  let saturday = null;
+  let sunday = null;
 
-  let sunday =
-    null;
-
-  for (
-    let i = 0;
-    i < 10;
-    i++
-  ) {
-    const date =
-      addDays(
-        today,
-        i
-      );
+  for (let i = 0; i < 10; i++) {
+    const date = addDays(today, i);
 
     if (
       date.getDay() === 6 &&
       !saturday
     ) {
-      saturday =
-        getLocalDate(date);
+      saturday = getLocalDate(date);
     }
 
     if (
       date.getDay() === 0 &&
       !sunday
     ) {
-      sunday =
-        getLocalDate(date);
+      sunday = getLocalDate(date);
     }
 
-    if (
-      saturday &&
-      sunday
-    ) {
+    if (saturday && sunday) {
       break;
     }
   }
@@ -106,9 +84,7 @@ function getWeekendDates() {
   };
 }
 
-function formatTime(
-  dateString
-) {
+function formatTime(dateString) {
   return new Date(
     dateString
   ).toLocaleTimeString(
@@ -122,9 +98,7 @@ function formatTime(
   );
 }
 
-function formatDate(
-  dateString
-) {
+function formatDate(dateString) {
   return new Date(
     dateString
   ).toLocaleDateString(
@@ -138,9 +112,11 @@ function formatDate(
   );
 }
 
-function getPredictionLevel(
-  score
-) {
+/* =========================================================
+   SCORE
+========================================================= */
+
+function getPredictionLevel(score) {
   if (score >= 82) {
     return "MUITO ALTA";
   }
@@ -155,6 +131,10 @@ function getPredictionLevel(
 
   return "BAIXA";
 }
+
+/* =========================================================
+   BADGE DO PROGNÓSTICO
+========================================================= */
 
 function PredictionBadge({
   prediction,
@@ -176,7 +156,7 @@ function PredictionBadge({
   }
 
   if (
-    prediction.score === 0
+    Number(prediction.score) === 0
   ) {
     return (
       <div className="mt-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
@@ -201,9 +181,7 @@ function PredictionBadge({
                       index
                     ) => (
                       <p
-                        key={
-                          index
-                        }
+                        key={index}
                         className="text-[10px] text-gray-600"
                       >
                         • {reason}
@@ -222,16 +200,13 @@ function PredictionBadge({
     );
   }
 
-  const score =
-    Number(
-      prediction.score
-    );
+  const score = Number(
+    prediction.score
+  );
 
   const level =
     prediction.level ||
-    getPredictionLevel(
-      score
-    );
+    getPredictionLevel(score);
 
   return (
     <div className="mt-4 bg-slate-900 border border-emerald-500/20 rounded-xl p-4">
@@ -246,8 +221,7 @@ function PredictionBadge({
           </p>
 
           <p className="text-[11px] text-gray-500 mt-1">
-            CONFIANÇA{" "}
-            {level}
+            CONFIANÇA {level}
           </p>
         </div>
 
@@ -266,13 +240,9 @@ function PredictionBadge({
 
       <div className="mt-4">
         <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-          <span>
-            {level}
-          </span>
+          <span>{level}</span>
 
-          <span>
-            {score}/100
-          </span>
+          <span>{score}/100</span>
         </div>
 
         <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -299,9 +269,7 @@ function PredictionBadge({
                 index
               ) => (
                 <p
-                  key={
-                    index
-                  }
+                  key={index}
                   className="text-[11px] text-gray-500"
                 >
                   • {reason}
@@ -363,6 +331,10 @@ function PredictionBadge({
   );
 }
 
+/* =========================================================
+   CARTÃO DO JOGO
+========================================================= */
+
 function MatchCard({
   match,
   prediction,
@@ -373,29 +345,22 @@ function MatchCard({
   let resultStatus =
     "PENDING";
 
-  let resultData =
-    null;
+  let resultData = null;
 
   if (
     historyItem?.status ===
     "HIT"
   ) {
-    resultStatus =
-      "HIT";
-
-    resultData =
-      historyItem;
+    resultStatus = "HIT";
+    resultData = historyItem;
   }
 
   if (
     historyItem?.status ===
     "MISS"
   ) {
-    resultStatus =
-      "MISS";
-
-    resultData =
-      historyItem;
+    resultStatus = "MISS";
+    resultData = historyItem;
   }
 
   return (
@@ -444,10 +409,7 @@ function MatchCard({
           <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
             {match.homeTeam?.shortName ||
               match.homeTeam?.name
-                ?.substring(
-                  0,
-                  3
-                )
+                ?.substring(0, 3)
                 .toUpperCase()}
           </div>
 
@@ -464,10 +426,7 @@ function MatchCard({
           <div className="w-12 h-12 bg-slate-700 rounded-full mx-auto mb-2 flex items-center justify-center text-sm font-bold text-gray-300">
             {match.awayTeam?.shortName ||
               match.awayTeam?.name
-                ?.substring(
-                  0,
-                  3
-                )
+                ?.substring(0, 3)
                 .toUpperCase()}
           </div>
 
@@ -478,19 +437,17 @@ function MatchCard({
       </div>
 
       <PredictionBadge
-        prediction={
-          prediction
-        }
-        resultStatus={
-          resultStatus
-        }
-        resultData={
-          resultData
-        }
+        prediction={prediction}
+        resultStatus={resultStatus}
+        resultData={resultData}
       />
     </div>
   );
 }
+
+/* =========================================================
+   HISTÓRICO
+========================================================= */
 
 function HistoryStats({
   history
@@ -498,24 +455,20 @@ function HistoryStats({
   const completed =
     history.filter(
       (item) =>
-        item.status ===
-          "HIT" ||
-        item.status ===
-          "MISS"
+        item.status === "HIT" ||
+        item.status === "MISS"
     );
 
   const hits =
     completed.filter(
       (item) =>
-        item.status ===
-        "HIT"
+        item.status === "HIT"
     ).length;
 
   const misses =
     completed.filter(
       (item) =>
-        item.status ===
-        "MISS"
+        item.status === "MISS"
     ).length;
 
   const pending =
@@ -626,12 +579,10 @@ function HistoryStats({
                   (item) =>
                     Number(
                       item.score
-                    ) >=
-                      range.min &&
+                    ) >= range.min &&
                     Number(
                       item.score
-                    ) <=
-                      range.max
+                    ) <= range.max
                 );
 
               const rangeHits =
@@ -642,22 +593,17 @@ function HistoryStats({
                 ).length;
 
               const rate =
-                items.length >
-                0
+                items.length > 0
                   ? (
                       (rangeHits /
                         items.length) *
                       100
-                    ).toFixed(
-                      1
-                    )
+                    ).toFixed(1)
                   : "—";
 
               return (
                 <div
-                  key={
-                    range.label
-                  }
+                  key={range.label}
                   className="bg-slate-900 rounded-xl p-3"
                 >
                   <div className="flex items-center justify-between">
@@ -668,8 +614,7 @@ function HistoryStats({
 
                     <span className="text-sm font-extrabold text-white">
                       {rate}
-                      {rate !==
-                        "—" &&
+                      {rate !== "—" &&
                         "%"}
                     </span>
                   </div>
@@ -786,6 +731,10 @@ function HistoryStats({
   );
 }
 
+/* =========================================================
+   PÁGINA PRINCIPAL
+========================================================= */
+
 export default function Home() {
   const [
     matches,
@@ -797,34 +746,47 @@ export default function Home() {
     setPredictions
   ] = useState({});
 
-const [history, setHistory] = useState(() => {
-  try {
-    if (typeof window === "undefined") {
+  /*
+   * IMPORTANTE:
+   * O histórico é carregado logo no
+   * useState, antes de loadData().
+   */
+  const [
+    history,
+    setHistory
+  ] = useState(() => {
+    try {
+      if (
+        typeof window ===
+        "undefined"
+      ) {
+        return [];
+      }
+
+      const stored =
+        localStorage.getItem(
+          HISTORY_KEY
+        );
+
+      if (!stored) {
+        return [];
+      }
+
+      const parsed =
+        JSON.parse(stored);
+
+      return Array.isArray(parsed)
+        ? parsed
+        : [];
+    } catch (error) {
+      console.error(
+        "Erro ao carregar histórico inicial:",
+        error
+      );
+
       return [];
     }
-
-    const stored =
-      localStorage.getItem(HISTORY_KEY);
-
-    if (!stored) {
-      return [];
-    }
-
-    const parsed =
-      JSON.parse(stored);
-
-    return Array.isArray(parsed)
-      ? parsed
-      : [];
-  } catch (error) {
-    console.error(
-      "Erro ao carregar histórico inicial:",
-      error
-    );
-
-    return [];
-  }
-});
+  });
 
   const [
     currentTab,
@@ -846,25 +808,17 @@ const [history, setHistory] = useState(() => {
     setLastUpdate
   ] = useState(null);
 
-  /*
-   * Carrega o histórico guardado no navegador.
-   */
-  
+  /* =======================================================
+     GUARDA HISTÓRICO
+  ======================================================= */
 
-  /*
-   * Guarda automaticamente o histórico.
-   */
   useEffect(() => {
     try {
       localStorage.setItem(
         HISTORY_KEY,
-        JSON.stringify(
-          history
-        )
+        JSON.stringify(history)
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       console.error(
         "Erro ao guardar histórico:",
         error
@@ -872,225 +826,65 @@ const [history, setHistory] = useState(() => {
     }
   }, [history]);
 
-  /*
-   * Consulta resultados dos prognósticos pendentes.
-   */
-async function updateResults(
-  currentHistory
-) {
-  const now =
-    Date.now();
+  /* =======================================================
+     VERIFICAR RESULTADOS
+  ======================================================= */
 
-  /*
-   * Só verificamos jogos que já tiveram
-   * tempo suficiente para terminar.
-   *
-   * 150 minutos = 2h30 após o início.
-   */
-  const CHECK_AFTER_MINUTES = 150;
-
-  const pendingItems =
-    currentHistory.filter(
-      (item) => {
-        if (
-          item.status !==
-          "PENDING"
-        ) {
-          return false;
-        }
-
-        if (
-          !item.utcDate
-        ) {
-          return false;
-        }
-
-        const kickoff =
-          new Date(
-            item.utcDate
-          ).getTime();
-
-        if (
-          Number.isNaN(
-            kickoff
-          )
-        ) {
-          return false;
-        }
-
-        return (
-          now >=
-          kickoff +
-            CHECK_AFTER_MINUTES *
-              60 *
-              1000
-        );
-      }
-    );
-
-  /*
-   * Não fazemos qualquer pedido se ainda
-   * não houver jogos suficientemente antigos.
-   */
-  if (
-    !pendingItems.length
+  async function updateResults(
+    currentHistory
   ) {
-    return currentHistory;
-  }
+    const now =
+      Date.now();
 
-  try {
-    const response =
-      await fetch(
-        "/api/results",
-        {
-          method:
-            "POST",
+    /*
+     * Só verificamos jogos que já tenham
+     * pelo menos 2h30 desde o início.
+     */
+    const CHECK_AFTER_MINUTES =
+      150;
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
+    const pendingItems =
+      currentHistory.filter(
+        (item) => {
+          if (
+            item.status !==
+            "PENDING"
+          ) {
+            return false;
+          }
 
-          body:
-            JSON.stringify({
-              items:
-                pendingItems.map(
-                  (item) => ({
-                    matchId:
-                      item.matchId,
+          if (
+            !item.utcDate
+          ) {
+            return false;
+          }
 
-                    homeTeam:
-                      item.homeTeam,
+          const kickoff =
+            new Date(
+              item.utcDate
+            ).getTime();
 
-                    awayTeam:
-                      item.awayTeam,
+          if (
+            Number.isNaN(
+              kickoff
+            )
+          ) {
+            return false;
+          }
 
-                    competition:
-                      item.competition,
-
-                    market:
-                      item.market,
-
-                    score:
-                      item.score,
-
-                    utcDate:
-                      item.utcDate
-                  })
-                )
-            })
+          return (
+            now >=
+            kickoff +
+              CHECK_AFTER_MINUTES *
+                60 *
+                1000
+          );
         }
       );
 
     /*
-     * 429 = limite temporário da API.
-     * Mantemos tudo PENDING e não alteramos
-     * o histórico.
+     * Nenhum jogo pronto para verificação.
      */
-    if (
-      response.status ===
-      429
-    ) {
-      console.warn(
-        "API de resultados temporariamente limitada."
-      );
-
-      return currentHistory;
-    }
-
-    if (
-      !response.ok
-    ) {
-      return currentHistory;
-    }
-
-    const data =
-      await response.json();
-
-    const results =
-      Array.isArray(
-        data.results
-      )
-        ? data.results
-        : [];
-
-    if (
-      !results.length
-    ) {
-      return currentHistory;
-    }
-
-    const resultMap =
-      new Map();
-
-    results.forEach(
-      (result) => {
-        resultMap.set(
-          String(
-            result.matchId
-          ),
-          result
-        );
-      }
-    );
-
-    return currentHistory.map(
-      (item) => {
-        const result =
-          resultMap.get(
-            String(
-              item.matchId
-            )
-          );
-
-        /*
-         * Sem resultado encontrado:
-         * mantém exactamente o estado actual.
-         */
-        if (!result) {
-          return item;
-        }
-
-        return {
-          ...item,
-
-          status:
-            result.hit
-              ? "HIT"
-              : "MISS",
-
-          homeGoals:
-            result.homeGoals,
-
-          awayGoals:
-            result.awayGoals,
-
-          completedAt:
-            result.utcDate,
-
-          updatedAt:
-            new Date().toISOString()
-        };
-      }
-    );
-  } catch (
-    error
-  ) {
-    console.error(
-      "Erro ao verificar resultados:",
-      error
-    );
-
-    return currentHistory;
-  }
-}
-    const pendingItems =
-      currentHistory.filter(
-        (item) =>
-          item.status ===
-          "PENDING"
-      );
-
     if (
       !pendingItems.length
     ) {
@@ -1104,10 +898,12 @@ async function updateResults(
           {
             method:
               "POST",
+
             headers: {
               "Content-Type":
                 "application/json"
             },
+
             body:
               JSON.stringify({
                 items:
@@ -1129,16 +925,39 @@ async function updateResults(
                         item.market,
 
                       score:
-                        item.score
+                        item.score,
+
+                      utcDate:
+                        item.utcDate
                     })
                   )
               })
           }
         );
 
+      /*
+       * Limite temporário da API.
+       * Mantemos o histórico intacto.
+       */
+      if (
+        response.status ===
+        429
+      ) {
+        console.warn(
+          "API de resultados temporariamente limitada."
+        );
+
+        return currentHistory;
+      }
+
       if (
         !response.ok
       ) {
+        console.warn(
+          "Erro HTTP em /api/results:",
+          response.status
+        );
+
         return currentHistory;
       }
 
@@ -1152,6 +971,10 @@ async function updateResults(
           ? data.results
           : [];
 
+      /*
+       * Ainda não existem resultados
+       * disponíveis.
+       */
       if (
         !results.length
       ) {
@@ -1181,6 +1004,10 @@ async function updateResults(
               )
             );
 
+          /*
+           * Sem resultado:
+           * preserva exactamente o item.
+           */
           if (!result) {
             return item;
           }
@@ -1207,9 +1034,7 @@ async function updateResults(
           };
         }
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       console.error(
         "Erro ao verificar resultados:",
         error
@@ -1219,18 +1044,14 @@ async function updateResults(
     }
   }
 
-  /*
-   * Carrega jogos e calcula prognósticos.
-   */
+  /* =======================================================
+     CARREGAR JOGOS + PROGNÓSTICOS
+  ======================================================= */
+
   async function loadData() {
     try {
-      setLoading(
-        true
-      );
-
-      setError(
-        null
-      );
+      setLoading(true);
+      setError(null);
 
       const matchesResponse =
         await fetch(
@@ -1388,20 +1209,21 @@ async function updateResults(
         );
       } else {
         setPredictions({});
+
         setLastUpdate(
           null
         );
-        newPredictions =
-          {};
+
+        newPredictions = {};
       }
 
       /*
-       * Guardar os prognósticos novos.
+       * IMPORTANTE:
+       * Começa sempre pelo histórico actual.
+       * Nunca substitui HIT/MISS por PENDING.
        */
       let workingHistory =
-        [
-          ...history
-        ];
+        [...history];
 
       Object.values(
         newPredictions
@@ -1429,84 +1251,117 @@ async function updateResults(
                 )
             );
 
-          const savedItem =
-            {
-              matchId:
-                prediction.matchId,
+          /*
+           * Estado anterior.
+           */
+          const existingItem =
+            existingIndex >=
+            0
+              ? workingHistory[
+                  existingIndex
+                ]
+              : null;
 
-              homeTeam:
-                prediction.homeTeam,
+          const savedItem = {
+            matchId:
+              prediction.matchId,
 
-              awayTeam:
-                prediction.awayTeam,
+            homeTeam:
+              prediction.homeTeam,
 
-              competition:
-                futureMatches.find(
-                  (match) =>
-                    String(
-                      match.id
-                    ) ===
-                    String(
-                      prediction.matchId
-                    )
-                )?.competition
-                  ?.code ||
-                "",
+            awayTeam:
+              prediction.awayTeam,
 
-              market:
-                prediction.market,
+            competition:
+              futureMatches.find(
+                (match) =>
+                  String(
+                    match.id
+                  ) ===
+                  String(
+                    prediction.matchId
+                  )
+              )?.competition
+                ?.code || "",
 
-              score:
+            market:
+              prediction.market,
+
+            score:
+              Number(
+                prediction.score
+              ),
+
+            level:
+              prediction.level ||
+              getPredictionLevel(
                 Number(
                   prediction.score
-                ),
+                )
+              ),
 
-              level:
-                prediction.level ||
-                getPredictionLevel(
-                  Number(
-                    prediction.score
-                  )
-                ),
+            utcDate:
+              prediction.utcDate,
 
-              utcDate:
-                prediction.utcDate,
+            /*
+             * CRÍTICO:
+             * preserva sempre HIT/MISS.
+             */
+            status:
+              existingItem?.status ||
+              "PENDING",
 
-              status:
-                existingIndex >=
-                  0 &&
-                workingHistory[
-                  existingIndex
-                ]?.status
-                  ? workingHistory[
-                      existingIndex
-                    ].status
-                  : "PENDING",
+            savedAt:
+              existingItem?.savedAt ||
+              new Date().toISOString(),
 
-              savedAt:
-                existingIndex >=
-                  0
-                  ? workingHistory[
-                      existingIndex
-                    ].savedAt ||
-                    new Date().toISOString()
-                  : new Date().toISOString()
-            };
+            /*
+             * Preserva resultado já guardado.
+             */
+            ...(existingItem?.homeGoals !==
+              undefined && {
+              homeGoals:
+                existingItem.homeGoals
+            }),
+
+            ...(existingItem?.awayGoals !==
+              undefined && {
+              awayGoals:
+                existingItem.awayGoals
+            }),
+
+            ...(existingItem?.completedAt && {
+              completedAt:
+                existingItem.completedAt
+            }),
+
+            ...(existingItem?.updatedAt && {
+              updatedAt:
+                existingItem.updatedAt
+            })
+          };
 
           if (
             existingIndex >=
             0
           ) {
+            /*
+             * Mantemos os dados antigos
+             * e actualizamos apenas os
+             * dados do prognóstico.
+             */
             workingHistory[
               existingIndex
             ] = {
               ...workingHistory[
                 existingIndex
               ],
-
               ...savedItem
             };
           } else {
+            /*
+             * Novo prognóstico.
+             */
             workingHistory.push(
               savedItem
             );
@@ -1515,7 +1370,8 @@ async function updateResults(
       );
 
       /*
-       * Verificar resultados anteriores.
+       * Verifica resultados que já possam
+       * estar concluídos.
        */
       const updatedHistory =
         await updateResults(
@@ -1525,9 +1381,7 @@ async function updateResults(
       setHistory(
         updatedHistory
       );
-    } catch (
-      err
-    ) {
+    } catch (err) {
       console.error(
         "Erro:",
         err
@@ -1538,26 +1392,22 @@ async function updateResults(
           "Erro ao carregar dados."
       );
     } finally {
-      setLoading(
-        false
-      );
+      setLoading(false);
     }
   }
 
-  /*
-   * CORREÇÃO PRINCIPAL:
-   *
-   * Chama loadData() automaticamente
-   * quando o portal abre.
-   */
+  /* =======================================================
+     PRIMEIRO CARREGAMENTO
+  ======================================================= */
+
   useEffect(() => {
     loadData();
   }, []);
 
-  /*
-   * Atualização automática dos resultados
-   * pendentes a cada 5 minutos.
-   */
+  /* =======================================================
+     VERIFICAÇÃO AUTOMÁTICA
+  ======================================================= */
+
   useEffect(() => {
     if (
       !history.some(
@@ -1589,23 +1439,31 @@ async function updateResults(
       }
     }
 
+    /*
+     * Verifica logo ao iniciar.
+     */
     checkResults();
 
-const interval =
-  setInterval(
-    checkResults,
-    15 * 60 * 1000
-  );
+    /*
+     * Depois verifica de 15 em 15 minutos.
+     */
+    const interval =
+      setInterval(
+        checkResults,
+        15 * 60 * 1000
+      );
 
     return () => {
-      cancelled =
-        true;
-
+      cancelled = true;
       clearInterval(
         interval
       );
     };
   }, [history]);
+
+  /* =======================================================
+     AGRUPAMENTO DOS JOGOS
+  ======================================================= */
 
   const groupedMatches =
     useMemo(() => {
@@ -1699,15 +1557,13 @@ const interval =
               const scoreA =
                 Number(
                   a.prediction
-                    ?.score ||
-                    0
+                    ?.score || 0
                 );
 
               const scoreB =
                 Number(
                   b.prediction
-                    ?.score ||
-                    0
+                    ?.score || 0
                 );
 
               if (
@@ -1756,6 +1612,10 @@ const interval =
       predictions
     ]);
 
+  /* =======================================================
+     TAB ACTUAL
+  ======================================================= */
+
   function getCurrentMatches() {
     switch (
       currentTab
@@ -1779,6 +1639,10 @@ const interval =
 
   const currentMatches =
     getCurrentMatches();
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <>
@@ -1837,12 +1701,8 @@ const interval =
 
             <div className="flex items-center gap-4">
               <button
-                onClick={
-                  loadData
-                }
-                disabled={
-                  loading
-                }
+                onClick={loadData}
+                disabled={loading}
                 className="text-gray-300 hover:text-white text-sm disabled:opacity-50"
                 title="Actualizar jogos e prognósticos"
               >
@@ -1945,7 +1805,9 @@ const interval =
                 A calcular prognósticos...
               </p>
             </div>
-          ) : error && currentTab !== "history" ? (
+          ) : error &&
+            currentTab !==
+              "history" ? (
             <div className="text-center py-12 text-red-400 bg-slate-800 rounded-2xl border border-red-900 p-6">
               <i className="fa-solid fa-triangle-exclamation text-3xl mb-4"></i>
 
@@ -1958,9 +1820,7 @@ const interval =
               </p>
 
               <button
-                onClick={
-                  loadData
-                }
+                onClick={loadData}
                 className="bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg"
               >
                 Tentar novamente
@@ -1969,9 +1829,7 @@ const interval =
           ) : currentTab ===
             "history" ? (
             <HistoryStats
-              history={
-                history
-              }
+              history={history}
             />
           ) : currentMatches.length ===
             0 ? (
@@ -2006,9 +1864,7 @@ const interval =
                         match.id ||
                         `${match.homeTeam?.name}-${match.awayTeam?.name}-${match.utcDate}`
                       }
-                      match={
-                        match
-                      }
+                      match={match}
                       prediction={
                         predictions[
                           String(
@@ -2027,9 +1883,7 @@ const interval =
                             )
                         )
                       }
-                      index={
-                        index
-                      }
+                      index={index}
                       isTopBet={
                         currentTab ===
                         "bestBets"
