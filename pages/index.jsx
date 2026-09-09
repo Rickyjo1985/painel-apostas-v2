@@ -1739,7 +1739,7 @@ const [history, setHistory] = useState(() => {
                 A calcular prognósticos...
               </p>
             </div>
-          ) : error ? (
+          ) : error && currentTab !== "history" ? (
             <div className="text-center py-12 text-red-400 bg-slate-800 rounded-2xl border border-red-900 p-6">
               <i className="fa-solid fa-triangle-exclamation text-3xl mb-4"></i>
 
