@@ -849,40 +849,7 @@ const [history, setHistory] = useState(() => {
   /*
    * Carrega o histórico guardado no navegador.
    */
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          HISTORY_KEY
-        );
-
-      if (!stored) {
-        return;
-      }
-
-      const parsed =
-        JSON.parse(
-          stored
-        );
-
-      if (
-        Array.isArray(
-          parsed
-        )
-      ) {
-        setHistory(
-          parsed
-        );
-      }
-    } catch (
-      error
-    ) {
-      console.error(
-        "Erro ao carregar histórico:",
-        error
-      );
-    }
-  }, []);
+  
 
   /*
    * Guarda automaticamente o histórico.
