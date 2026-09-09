@@ -1239,20 +1239,49 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    loadData();
+useEffect(() => {
+  if (
+    !history.some(
+      (item) =>
+        item.status === "PENDING"
+    )
+  ) {
+    return;
+  }
 
-    const interval =
-      setInterval(
-        loadData,
-        5 * 60 * 1000
+  let cancelled = false;
+
+  async function checkResults() {
+    const updatedHistory =
+      await updateResults(
+        history
       );
 
-    return () =>
-      clearInterval(
-        interval
+    if (
+      !cancelled &&
+      updatedHistory !== history
+    ) {
+      setHistory(
+        updatedHistory
       );
-  }, []);
+    }
+  }
+
+  checkResults();
+
+  const interval =
+    setInterval(
+      checkResults,
+      5 * 60 * 1000
+    );
+
+  return () => {
+    cancelled = true;
+    clearInterval(
+      interval
+    );
+  };
+}, [history]);
 
   const groupedMatches =
     useMemo(() => {
