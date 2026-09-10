@@ -1,26 +1,27 @@
 const FOOTBALL_API_KEY =
   process.env.FOOTBALL_DATA_API_KEY;
 
-/*
- * Cache local para evitar repetir a mesma consulta
- * durante alguns minutos.
- */
+const VALID_COMPETITIONS = [
+  "PL",
+  "PD",
+  "BL1",
+  "SA",
+  "FL1",
+  "PPL",
+  "ELC",
+  "CL",
+  "EL",
+  "ECL"
+];
+
 const CACHE_TTL =
   5 * 60 * 1000;
 
-/*
- * Número máximo de IDs enviados num pedido.
- *
- * Com 49 prognósticos pendentes:
- * 49 / 20 = 3 pedidos.
- */
-const MAX_IDS_PER_REQUEST = 20;
-
-const matchCache =
+const matchesCache =
   new Map();
 
 /* =========================================================
-   PREDIÇÃO -> RESULTADO
+   RESULTADO DO PROGNÓSTICO
 ========================================================= */
 
 function predictionHit(
@@ -59,6 +60,42 @@ function predictionHit(
 }
 
 /* =========================================================
+   JOGO JÁ PODE SER VERIFICADO?
+========================================================= */
+
+function isReadyForResult(item) {
+  if (!item?.utcDate) {
+    return true;
+  }
+
+  const kickoff =
+    new Date(
+      item.utcDate
+    ).getTime();
+
+  if (
+    Number.isNaN(kickoff)
+  ) {
+    return true;
+  }
+
+  /*
+   * Esperamos 2h30 depois do início
+   * antes de consultar o resultado.
+   */
+  const checkAfter =
+    150 *
+    60 *
+    1000;
+
+  return (
+    Date.now() >=
+    kickoff +
+      checkAfter
+  );
+}
+
+/* =========================================================
    CACHE
 ========================================================= */
 
@@ -73,14 +110,16 @@ function getCacheKey(ids) {
    CONSULTAR JOGOS PELOS IDs
 ========================================================= */
 
-async function getFinishedMatchesByIds(
+async function getMatchesByIds(
   ids
 ) {
   const cacheKey =
     getCacheKey(ids);
 
   const cached =
-    matchCache.get(cacheKey);
+    matchesCache.get(
+      cacheKey
+    );
 
   if (
     cached &&
@@ -93,21 +132,26 @@ async function getFinishedMatchesByIds(
         cached.matches,
 
       headers:
-        cached.headers || {}
+        cached.headers
     };
   }
 
   const params =
     new URLSearchParams();
 
+  /*
+   * IMPORTANTE:
+   * Usamos apenas os IDs.
+   *
+   * NÃO usamos:
+   * status=FINISHED
+   *
+   * Porque queremos recuperar também
+   * jogos terminados em dias anteriores.
+   */
   params.set(
     "ids",
     ids.join(",")
-  );
-
-  params.set(
-    "status",
-    "FINISHED"
   );
 
   params.set(
@@ -193,7 +237,7 @@ async function getFinishedMatchesByIds(
       ? data.matches
       : [];
 
-  matchCache.set(
+  matchesCache.set(
     cacheKey,
     {
       timestamp:
@@ -207,77 +251,9 @@ async function getFinishedMatchesByIds(
 
   return {
     matches,
+
     headers
   };
-}
-
-/* =========================================================
-   CHUNK
-========================================================= */
-
-function chunkArray(
-  array,
-  size
-) {
-  const chunks = [];
-
-  for (
-    let i = 0;
-    i < array.length;
-    i += size
-  ) {
-    chunks.push(
-      array.slice(
-        i,
-        i + size
-      )
-    );
-  }
-
-  return chunks;
-}
-
-/* =========================================================
-   HORA MÍNIMA PARA VERIFICAR
-========================================================= */
-
-function isReadyForResult(item) {
-  /*
-   * Para registos antigos sem utcDate,
-   * tentamos consultar directamente pelo matchId.
-   */
-  if (
-    !item?.utcDate
-  ) {
-    return true;
-  }
-
-  const kickoff =
-    new Date(
-      item.utcDate
-    ).getTime();
-
-  if (
-    Number.isNaN(
-      kickoff
-    )
-  ) {
-    return true;
-  }
-
-  /*
-   * 2h30 depois do início.
-   */
-  const checkAfter =
-    150 *
-    60 *
-    1000;
-
-  return (
-    Date.now() >=
-    kickoff +
-      checkAfter
-  );
 }
 
 /* =========================================================
@@ -326,24 +302,26 @@ export default async function handler(
     }
 
     /*
-     * Só consideramos PENDING.
-     *
-     * Jogos ainda demasiado recentes ficam
-     * para a próxima verificação.
+     * Apenas itens válidos e que estejam
+     * suficientemente afastados do kickoff.
      */
-    const pendingItems =
+    const readyItems =
       items.filter(
         (item) =>
           item &&
-          item.status !==
-            "HIT" &&
-          item.status !==
-            "MISS" &&
+          item.matchId &&
+          item.market &&
+          (
+            !item.competition ||
+            VALID_COMPETITIONS.includes(
+              item.competition
+            )
+          ) &&
           isReadyForResult(item)
       );
 
     if (
-      !pendingItems.length
+      !readyItems.length
     ) {
       return res.status(200).json({
         results: [],
@@ -359,30 +337,29 @@ export default async function handler(
           apiRequests: 0,
 
           reason:
-            "Nenhum jogo está pronto para verificação."
+            "Nenhum prognóstico está pronto para verificação."
         }
       });
     }
 
     /*
-     * Extraímos os matchIds.
+     * IDs únicos.
      */
     const matchIds = [
       ...new Set(
-        pendingItems
+        readyItems
           .map(
             (item) =>
-              item.matchId
+              String(
+                item.matchId
+              )
           )
           .filter(
             (id) =>
-              id !==
-                undefined &&
-              id !== null &&
-              String(id).trim() !==
-                ""
+              id &&
+              id !== "undefined" &&
+              id !== "null"
           )
-          .map(String)
       )
     ];
 
@@ -397,174 +374,146 @@ export default async function handler(
             items.length,
 
           ready:
-            pendingItems.length,
+            readyItems.length,
 
           found: 0,
 
           apiRequests: 0,
 
           reason:
-            "Não existem matchIds válidos."
+            "Não existem IDs de jogos válidos."
         }
       });
     }
 
-    /*
-     * Dividimos os IDs em pequenos blocos.
-     */
-    const chunks =
-      chunkArray(
-        matchIds,
-        MAX_IDS_PER_REQUEST
-      );
-
-    /*
-     * Mapa final dos jogos.
-     */
-    const matchesById =
-      new Map();
+    /* =====================================================
+       UMA ÚNICA CHAMADA À API
+    ===================================================== */
 
     let apiRequests = 0;
 
-    let lastHeaders = {};
+    let apiData;
 
-    /*
-     * Consultas sequenciais para respeitar
-     * a limitação da API.
-     */
-    for (
-      const chunk of chunks
-    ) {
-      try {
-        apiRequests++;
+    try {
+      apiRequests++;
 
-        const response =
-          await getFinishedMatchesByIds(
-            chunk
-          );
+      apiData =
+        await getMatchesByIds(
+          matchIds
+        );
+    } catch (error) {
+      console.error(
+        "Erro ao consultar jogos:",
+        error.message
+      );
 
-        lastHeaders =
-          response.headers ||
-          lastHeaders;
-
-        for (
-          const match of
-          response.matches
-        ) {
-          matchesById.set(
-            String(
-              match.id
-            ),
-            match
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Erro ao consultar resultados:",
-          error.message
+      if (
+        error.status ===
+        429
+      ) {
+        res.setHeader(
+          "Cache-Control",
+          "no-store, max-age=0"
         );
 
-        /*
-         * Limite da API.
-         *
-         * Não alteramos o Histórico.
-         */
-        if (
-          error.status ===
-          429
-        ) {
-          res.setHeader(
-            "Cache-Control",
-            "no-store, max-age=0"
-          );
+        return res
+          .status(429)
+          .json({
+            error:
+              "football-data.org atingiu o limite temporário de pedidos.",
 
-          return res
-            .status(429)
-            .json({
-              error:
-                "football-data.org atingiu o limite temporário de pedidos.",
+            results: [],
 
-              results: [],
+            meta: {
+              checked:
+                items.length,
 
-              meta: {
-                checked:
-                  items.length,
+              ready:
+                readyItems.length,
 
-                ready:
-                  pendingItems.length,
+              requestedIds:
+                matchIds.length,
 
-                found: 0,
+              found: 0,
 
-                apiRequests,
+              apiRequests,
 
-                requestsAvailable:
-                  error.apiHeaders
-                    ?.available ||
-                  null,
+              requestsAvailable:
+                error.apiHeaders
+                  ?.available ||
+                null,
 
-                resetSeconds:
-                  error.apiHeaders
-                    ?.reset ||
-                  null,
+              resetSeconds:
+                error.apiHeaders
+                  ?.reset ||
+                null,
 
-                retryAfter:
-                  error.apiHeaders
-                    ?.retryAfter ||
-                  null
-              }
-            });
-        }
-
-        /*
-         * Recurso não disponível / problema de
-         * autenticação / permissão.
-         */
-        if (
-          error.status ===
-          403
-        ) {
-          res.setHeader(
-            "Cache-Control",
-            "no-store, max-age=0"
-          );
-
-          return res
-            .status(403)
-            .json({
-              error:
-                "football-data.org recusou o acesso aos resultados.",
-
-              results: [],
-
-              meta: {
-                checked:
-                  items.length,
-
-                ready:
-                  pendingItems.length,
-
-                found: 0,
-
-                apiRequests
-              }
-            });
-        }
-
-        /*
-         * Para outros erros, não destruímos
-         * resultados já encontrados.
-         */
+              retryAfter:
+                error.apiHeaders
+                  ?.retryAfter ||
+                null
+            }
+          });
       }
+
+      if (
+        error.status ===
+        403
+      ) {
+        return res
+          .status(403)
+          .json({
+            error:
+              "football-data.org recusou o acesso aos resultados.",
+
+            results: [],
+
+            meta: {
+              checked:
+                items.length,
+
+              ready:
+                readyItems.length,
+
+              found: 0,
+
+              apiRequests
+            }
+          });
+      }
+
+      throw error;
     }
 
+    const matches =
+      Array.isArray(
+        apiData?.matches
+      )
+        ? apiData.matches
+        : [];
+
+    const matchesById =
+      new Map();
+
+    matches.forEach(
+      (match) => {
+        matchesById.set(
+          String(
+            match.id
+          ),
+          match
+        );
+      }
+    );
+
     /* =====================================================
-       AVALIAR RESULTADOS
+       AVALIAR PROGNÓSTICOS
     ===================================================== */
 
     const results = [];
 
     for (
-      const item of pendingItems
+      const item of readyItems
     ) {
       const found =
         matchesById.get(
@@ -574,15 +523,15 @@ export default async function handler(
         );
 
       /*
-       * O jogo ainda não apareceu como
-       * FINISHED ou não foi encontrado.
+       * Não encontrado.
        */
       if (!found) {
         continue;
       }
 
       /*
-       * Segurança adicional.
+       * Só concluímos quando a API diz
+       * explicitamente FINISHED.
        */
       if (
         found.status !==
@@ -667,10 +616,6 @@ export default async function handler(
       });
     }
 
-    /* =====================================================
-       RESPOSTA
-    ===================================================== */
-
     res.setHeader(
       "Cache-Control",
       "no-store, max-age=0"
@@ -684,10 +629,13 @@ export default async function handler(
           items.length,
 
         ready:
-          pendingItems.length,
+          readyItems.length,
 
         requestedIds:
           matchIds.length,
+
+        returnedMatches:
+          matches.length,
 
         found:
           results.length,
@@ -695,11 +643,13 @@ export default async function handler(
         apiRequests,
 
         requestsAvailable:
-          lastHeaders.available ||
+          apiData?.headers
+            ?.available ||
           null,
 
         resetSeconds:
-          lastHeaders.reset ||
+          apiData?.headers
+            ?.reset ||
           null,
 
         updatedAt:
@@ -712,15 +662,13 @@ export default async function handler(
       error
     );
 
-    const status =
-      error.status === 429
-        ? 429
-        : error.status === 403
-        ? 403
-        : 500;
-
     return res
-      .status(status)
+      .status(
+        error.status ===
+        429
+          ? 429
+          : 500
+      )
       .json({
         error:
           error.message ||
