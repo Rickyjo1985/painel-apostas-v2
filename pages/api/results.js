@@ -60,11 +60,92 @@ function predictionHit(
 }
 
 /* =========================================================
-   JOGO JÁ PODE SER VERIFICADO?
+   DATAS
 ========================================================= */
 
+function formatDateUTC(date) {
+  return date
+    .toISOString()
+    .slice(0, 10);
+}
+
+function addDaysUTC(
+  dateString,
+  days
+) {
+  const date =
+    new Date(
+      `${dateString}T00:00:00Z`
+    );
+
+  date.setUTCDate(
+    date.getUTCDate() +
+      days
+  );
+
+  return formatDateUTC(
+    date
+  );
+}
+
+function dateDifference(
+  fromDate,
+  toDate
+) {
+  const from =
+    new Date(
+      `${fromDate}T00:00:00Z`
+    );
+
+  const to =
+    new Date(
+      `${toDate}T00:00:00Z`
+    );
+
+  return Math.round(
+    (
+      to.getTime() -
+      from.getTime()
+    ) / 86400000
+  );
+}
+
+/*
+ * Extrai a data UTC do prognóstico.
+ */
+function getItemDate(item) {
+  if (
+    !item?.utcDate
+  ) {
+    return null;
+  }
+
+  const date =
+    new Date(
+      item.utcDate
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return formatDateUTC(
+    date
+  );
+}
+
+/*
+ * Só verificamos jogos 2h30 depois
+ * do início.
+ */
 function isReadyForResult(item) {
-  if (!item?.utcDate) {
+  if (
+    !item?.utcDate
+  ) {
     return true;
   }
 
@@ -74,47 +155,126 @@ function isReadyForResult(item) {
     ).getTime();
 
   if (
-    Number.isNaN(kickoff)
+    Number.isNaN(
+      kickoff
+    )
   ) {
     return true;
   }
 
-  /*
-   * Esperamos 2h30 depois do início
-   * antes de consultar o resultado.
-   */
-  const checkAfter =
-    150 *
-    60 *
-    1000;
-
   return (
     Date.now() >=
     kickoff +
-      checkAfter
+      150 *
+        60 *
+        1000
   );
+}
+
+/* =========================================================
+   CONSTRUIR INTERVALOS
+========================================================= */
+
+/*
+ * A API não deve receber intervalos maiores
+ * do que 10 dias.
+ *
+ * Usamos 9 dias para manter margem.
+ */
+function buildDateRanges(
+  dates
+) {
+  const uniqueDates = [
+    ...new Set(
+      dates.filter(Boolean)
+    )
+  ].sort();
+
+  if (
+    uniqueDates.length === 0
+  ) {
+    return [];
+  }
+
+  const ranges = [];
+
+  let start =
+    uniqueDates[0];
+
+  let end =
+    uniqueDates[0];
+
+  for (
+    let i = 1;
+    i < uniqueDates.length;
+    i++
+  ) {
+    const current =
+      uniqueDates[i];
+
+    if (
+      dateDifference(
+        start,
+        current
+      ) <= 9
+    ) {
+      end =
+        current;
+
+      continue;
+    }
+
+    ranges.push({
+      from: start,
+      to: end
+    });
+
+    start =
+      current;
+
+    end =
+      current;
+  }
+
+  ranges.push({
+    from: start,
+    to: end
+  });
+
+  return ranges;
 }
 
 /* =========================================================
    CACHE
 ========================================================= */
 
-function getCacheKey(ids) {
-  return ids
-    .map(String)
-    .sort()
-    .join(",");
+function getCacheKey(
+  competitions,
+  dateFrom,
+  dateTo
+) {
+  return [
+    [...competitions].sort().join(","),
+    dateFrom,
+    dateTo
+  ].join("|");
 }
 
 /* =========================================================
-   CONSULTAR JOGOS PELOS IDs
+   CONSULTAR JOGOS POR DATA + COMPETIÇÕES
 ========================================================= */
 
-async function getMatchesByIds(
-  ids
+async function getMatchesByRange(
+  competitions,
+  dateFrom,
+  dateTo
 ) {
   const cacheKey =
-    getCacheKey(ids);
+    getCacheKey(
+      competitions,
+      dateFrom,
+      dateTo
+    );
 
   const cached =
     matchesCache.get(
@@ -139,40 +299,58 @@ async function getMatchesByIds(
   const params =
     new URLSearchParams();
 
+  params.set(
+    "competitions",
+    competitions.join(",")
+  );
+
+  params.set(
+    "dateFrom",
+    dateFrom
+  );
+
+  params.set(
+    "dateTo",
+    dateTo
+  );
+
+  /*
+   * Até 500 resultados.
+   */
+  params.set(
+    "limit",
+    "500"
+  );
+
   /*
    * IMPORTANTE:
-   * Usamos apenas os IDs.
    *
    * NÃO usamos:
    * status=FINISHED
    *
-   * Porque queremos recuperar também
-   * jogos terminados em dias anteriores.
+   * porque esse filtro no endpoint
+   * geral é limitado ao dia atual.
+   *
+   * Filtramos FINISHED depois,
+   * no nosso próprio código.
    */
-  params.set(
-    "ids",
-    ids.join(",")
-  );
-
-  params.set(
-    "limit",
-    "100"
-  );
-
   const url =
     "https://api.football-data.org/v4/matches?" +
     params.toString();
 
   const response =
-    await fetch(url, {
-      headers: {
-        "X-Auth-Token":
-          FOOTBALL_API_KEY,
+    await fetch(
+      url,
+      {
+        headers: {
+          "X-Auth-Token":
+            FOOTBALL_API_KEY,
 
-        Accept:
-          "application/json"
+          Accept:
+            "application/json"
+        }
       }
-    });
+    );
 
   const headers = {
     available:
@@ -210,7 +388,9 @@ async function getMatchesByIds(
       await response.text();
   }
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     const message =
       typeof data ===
       "string"
@@ -219,7 +399,9 @@ async function getMatchesByIds(
           `Erro HTTP ${response.status}`;
 
     const error =
-      new Error(message);
+      new Error(
+        message
+      );
 
     error.status =
       response.status;
@@ -265,7 +447,8 @@ export default async function handler(
   res
 ) {
   if (
-    req.method !== "POST"
+    req.method !==
+    "POST"
   ) {
     return res.status(405).json({
       error:
@@ -273,7 +456,9 @@ export default async function handler(
     });
   }
 
-  if (!FOOTBALL_API_KEY) {
+  if (
+    !FOOTBALL_API_KEY
+  ) {
     return res.status(500).json({
       error:
         "FOOTBALL_DATA_API_KEY não está configurada."
@@ -288,7 +473,9 @@ export default async function handler(
         ? req.body.items
         : [];
 
-    if (!items.length) {
+    if (
+      !items.length
+    ) {
       return res.status(200).json({
         results: [],
 
@@ -301,22 +488,16 @@ export default async function handler(
       });
     }
 
-    /*
-     * Apenas itens válidos e que estejam
-     * suficientemente afastados do kickoff.
-     */
+    /* =====================================================
+       PENDENTES PRONTOS
+    ===================================================== */
+
     const readyItems =
       items.filter(
         (item) =>
           item &&
           item.matchId &&
           item.market &&
-          (
-            !item.competition ||
-            VALID_COMPETITIONS.includes(
-              item.competition
-            )
-          ) &&
           isReadyForResult(item)
       );
 
@@ -342,29 +523,28 @@ export default async function handler(
       });
     }
 
-    /*
-     * IDs únicos.
-     */
-    const matchIds = [
+    /* =====================================================
+       COMPETIÇÕES
+    ===================================================== */
+
+    const competitions = [
       ...new Set(
         readyItems
           .map(
             (item) =>
-              String(
-                item.matchId
-              )
+              item.competition
           )
           .filter(
-            (id) =>
-              id &&
-              id !== "undefined" &&
-              id !== "null"
+            (competition) =>
+              VALID_COMPETITIONS.includes(
+                competition
+              )
           )
       )
     ];
 
     if (
-      !matchIds.length
+      !competitions.length
     ) {
       return res.status(200).json({
         results: [],
@@ -381,133 +561,146 @@ export default async function handler(
           apiRequests: 0,
 
           reason:
-            "Não existem IDs de jogos válidos."
+            "Nenhuma competição válida encontrada."
         }
       });
     }
 
     /* =====================================================
-       UMA ÚNICA CHAMADA À API
+       DATAS
     ===================================================== */
 
-    let apiRequests = 0;
+    const dates =
+      readyItems
+        .map(
+          getItemDate
+        )
+        .filter(Boolean);
 
-    let apiData;
-
-    try {
-      apiRequests++;
-
-      apiData =
-        await getMatchesByIds(
-          matchIds
-        );
-    } catch (error) {
-      console.error(
-        "Erro ao consultar jogos:",
-        error.message
+    const ranges =
+      buildDateRanges(
+        dates
       );
 
-      if (
-        error.status ===
-        429
-      ) {
-        res.setHeader(
-          "Cache-Control",
-          "no-store, max-age=0"
-        );
-
-        return res
-          .status(429)
-          .json({
-            error:
-              "football-data.org atingiu o limite temporário de pedidos.",
-
-            results: [],
-
-            meta: {
-              checked:
-                items.length,
-
-              ready:
-                readyItems.length,
-
-              requestedIds:
-                matchIds.length,
-
-              found: 0,
-
-              apiRequests,
-
-              requestsAvailable:
-                error.apiHeaders
-                  ?.available ||
-                null,
-
-              resetSeconds:
-                error.apiHeaders
-                  ?.reset ||
-                null,
-
-              retryAfter:
-                error.apiHeaders
-                  ?.retryAfter ||
-                null
-            }
-          });
-      }
-
-      if (
-        error.status ===
-        403
-      ) {
-        return res
-          .status(403)
-          .json({
-            error:
-              "football-data.org recusou o acesso aos resultados.",
-
-            results: [],
-
-            meta: {
-              checked:
-                items.length,
-
-              ready:
-                readyItems.length,
-
-              found: 0,
-
-              apiRequests
-            }
-          });
-      }
-
-      throw error;
-    }
-
-    const matches =
-      Array.isArray(
-        apiData?.matches
-      )
-        ? apiData.matches
-        : [];
+    /* =====================================================
+       BUSCAR JOGOS
+    ===================================================== */
 
     const matchesById =
       new Map();
 
-    matches.forEach(
-      (match) => {
-        matchesById.set(
-          String(
-            match.id
-          ),
-          match
+    let apiRequests = 0;
+
+    let requestsAvailable =
+      null;
+
+    let resetSeconds =
+      null;
+
+    for (
+      const range of ranges
+    ) {
+      try {
+        apiRequests++;
+
+        const response =
+          await getMatchesByRange(
+            competitions,
+            range.from,
+            range.to
+          );
+
+        requestsAvailable =
+          response.headers
+            ?.available ||
+          requestsAvailable;
+
+        resetSeconds =
+          response.headers
+            ?.reset ||
+          resetSeconds;
+
+        /*
+         * Só guardamos FINISHED.
+         */
+        for (
+          const match of
+          response.matches
+        ) {
+          if (
+            match.status !==
+            "FINISHED"
+          ) {
+            continue;
+          }
+
+          matchesById.set(
+            String(
+              match.id
+            ),
+            match
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Erro ao consultar resultados:",
+          range,
+          error.message
         );
+
+        /*
+         * Limite da API.
+         */
+        if (
+          error.status ===
+          429
+        ) {
+          res.setHeader(
+            "Cache-Control",
+            "no-store, max-age=0"
+          );
+
+          return res
+            .status(429)
+            .json({
+              error:
+                "football-data.org atingiu o limite temporário de pedidos.",
+
+              results: [],
+
+              meta: {
+                checked:
+                  items.length,
+
+                ready:
+                  readyItems.length,
+
+                found: 0,
+
+                apiRequests,
+
+                requestsAvailable:
+                  error.apiHeaders
+                    ?.available ||
+                  null,
+
+                resetSeconds:
+                  error.apiHeaders
+                    ?.reset ||
+                  null,
+
+                retryAfter:
+                  error.apiHeaders
+                    ?.retryAfter ||
+                  null
+              }
+            });
+        }
       }
-    );
+    }
 
     /* =====================================================
-       AVALIAR PROGNÓSTICOS
+       CRUZAR MATCH ID
     ===================================================== */
 
     const results = [];
@@ -515,7 +708,7 @@ export default async function handler(
     for (
       const item of readyItems
     ) {
-      const found =
+      const match =
         matchesById.get(
           String(
             item.matchId
@@ -523,18 +716,17 @@ export default async function handler(
         );
 
       /*
-       * Não encontrado.
+       * Não encontramos o jogo.
        */
-      if (!found) {
+      if (!match) {
         continue;
       }
 
       /*
-       * Só concluímos quando a API diz
-       * explicitamente FINISHED.
+       * Segurança.
        */
       if (
-        found.status !==
+        match.status !==
         "FINISHED"
       ) {
         continue;
@@ -542,14 +734,14 @@ export default async function handler(
 
       const homeGoals =
         Number(
-          found.score
+          match.score
             ?.fullTime
             ?.home
         );
 
       const awayGoals =
         Number(
-          found.score
+          match.score
             ?.fullTime
             ?.away
         );
@@ -583,21 +775,21 @@ export default async function handler(
           item.matchId,
 
         homeTeam:
-          found.homeTeam?.name ||
+          match.homeTeam?.name ||
           item.homeTeam,
 
         awayTeam:
-          found.awayTeam?.name ||
+          match.awayTeam?.name ||
           item.awayTeam,
 
         competition:
-          found.competition
+          match.competition
             ?.code ||
           item.competition ||
           "",
 
         utcDate:
-          found.utcDate ||
+          match.utcDate ||
           item.utcDate,
 
         homeGoals,
@@ -616,6 +808,10 @@ export default async function handler(
       });
     }
 
+    /* =====================================================
+       RESPOSTA
+    ===================================================== */
+
     res.setHeader(
       "Cache-Control",
       "no-store, max-age=0"
@@ -631,26 +827,23 @@ export default async function handler(
         ready:
           readyItems.length,
 
-        requestedIds:
-          matchIds.length,
+        competitions:
+          competitions.length,
+
+        ranges:
+          ranges.length,
 
         returnedMatches:
-          matches.length,
+          matchesById.size,
 
         found:
           results.length,
 
         apiRequests,
 
-        requestsAvailable:
-          apiData?.headers
-            ?.available ||
-          null,
+        requestsAvailable,
 
-        resetSeconds:
-          apiData?.headers
-            ?.reset ||
-          null,
+        resetSeconds,
 
         updatedAt:
           new Date().toISOString()
