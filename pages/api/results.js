@@ -79,8 +79,7 @@ function addDaysUTC(
     );
 
   date.setUTCDate(
-    date.getUTCDate() +
-      days
+    date.getUTCDate() + days
   );
 
   return formatDateUTC(
@@ -110,9 +109,6 @@ function dateDifference(
   );
 }
 
-/*
- * Extrai a data UTC do prognóstico.
- */
 function getItemDate(item) {
   if (
     !item?.utcDate
@@ -138,10 +134,10 @@ function getItemDate(item) {
   );
 }
 
-/*
- * Só verificamos jogos 2h30 depois
- * do início.
- */
+/* =========================================================
+   JOGO JÁ PODE SER VERIFICADO?
+========================================================= */
+
 function isReadyForResult(item) {
   if (
     !item?.utcDate
@@ -162,6 +158,9 @@ function isReadyForResult(item) {
     return true;
   }
 
+  /*
+   * Esperamos 2h30 depois do início.
+   */
   return (
     Date.now() >=
     kickoff +
@@ -172,15 +171,9 @@ function isReadyForResult(item) {
 }
 
 /* =========================================================
-   CONSTRUIR INTERVALOS
+   INTERVALOS
 ========================================================= */
 
-/*
- * A API não deve receber intervalos maiores
- * do que 10 dias.
- *
- * Usamos 9 dias para manter margem.
- */
 function buildDateRanges(
   dates
 ) {
@@ -212,6 +205,10 @@ function buildDateRanges(
     const current =
       uniqueDates[i];
 
+    /*
+     * Máximo de 10 dias inclusivos:
+     * diferença máxima = 9.
+     */
     if (
       dateDifference(
         start,
@@ -261,7 +258,7 @@ function getCacheKey(
 }
 
 /* =========================================================
-   CONSULTAR JOGOS POR DATA + COMPETIÇÕES
+   CONSULTA FOOTBALL-DATA
 ========================================================= */
 
 async function getMatchesByRange(
@@ -309,30 +306,39 @@ async function getMatchesByRange(
     dateFrom
   );
 
+  /*
+   * IMPORTANTE:
+   *
+   * football-data.org trata dateTo como
+   * EXCLUSIVO.
+   *
+   * Portanto, para consultar até dateTo,
+   * enviamos o dia seguinte.
+   *
+   * Exemplo:
+   * 10/09 -> dateTo=11/09
+   */
+  const apiDateTo =
+    addDaysUTC(
+      dateTo,
+      1
+    );
+
   params.set(
     "dateTo",
-    dateTo
+    apiDateTo
   );
 
-  /*
-   * Até 500 resultados.
-   */
   params.set(
     "limit",
     "500"
   );
 
   /*
-   * IMPORTANTE:
+   * Não usamos status=FINISHED aqui.
    *
-   * NÃO usamos:
-   * status=FINISHED
-   *
-   * porque esse filtro no endpoint
-   * geral é limitado ao dia atual.
-   *
-   * Filtramos FINISHED depois,
-   * no nosso próprio código.
+   * Recebemos os jogos do intervalo
+   * e filtramos FINISHED no nosso código.
    */
   const url =
     "https://api.football-data.org/v4/matches?" +
@@ -433,7 +439,6 @@ async function getMatchesByRange(
 
   return {
     matches,
-
     headers
   };
 }
@@ -488,10 +493,9 @@ export default async function handler(
       });
     }
 
-    /* =====================================================
-       PENDENTES PRONTOS
-    ===================================================== */
-
+    /*
+     * Só prognósticos prontos.
+     */
     const readyItems =
       items.filter(
         (item) =>
@@ -583,7 +587,7 @@ export default async function handler(
       );
 
     /* =====================================================
-       BUSCAR JOGOS
+       CONSULTAS
     ===================================================== */
 
     const matchesById =
@@ -621,7 +625,7 @@ export default async function handler(
           resetSeconds;
 
         /*
-         * Só guardamos FINISHED.
+         * Só guardamos jogos FINISHED.
          */
         for (
           const match of
@@ -649,7 +653,7 @@ export default async function handler(
         );
 
         /*
-         * Limite da API.
+         * Limite de pedidos.
          */
         if (
           error.status ===
@@ -675,7 +679,8 @@ export default async function handler(
                 ready:
                   readyItems.length,
 
-                found: 0,
+                ranges:
+                  ranges.length,
 
                 apiRequests,
 
@@ -696,11 +701,16 @@ export default async function handler(
               }
             });
         }
+
+        /*
+         * Outros erros não apagam o que
+         * já tenha sido encontrado.
+         */
       }
     }
 
     /* =====================================================
-       CRUZAR MATCH ID
+       AVALIAR PROGNÓSTICOS
     ===================================================== */
 
     const results = [];
@@ -708,7 +718,7 @@ export default async function handler(
     for (
       const item of readyItems
     ) {
-      const match =
+      const found =
         matchesById.get(
           String(
             item.matchId
@@ -716,17 +726,17 @@ export default async function handler(
         );
 
       /*
-       * Não encontramos o jogo.
+       * Ainda não encontrado.
        */
-      if (!match) {
+      if (!found) {
         continue;
       }
 
       /*
-       * Segurança.
+       * Segurança extra.
        */
       if (
-        match.status !==
+        found.status !==
         "FINISHED"
       ) {
         continue;
@@ -734,14 +744,14 @@ export default async function handler(
 
       const homeGoals =
         Number(
-          match.score
+          found.score
             ?.fullTime
             ?.home
         );
 
       const awayGoals =
         Number(
-          match.score
+          found.score
             ?.fullTime
             ?.away
         );
@@ -775,25 +785,24 @@ export default async function handler(
           item.matchId,
 
         homeTeam:
-          match.homeTeam?.name ||
+          found.homeTeam?.name ||
           item.homeTeam,
 
         awayTeam:
-          match.awayTeam?.name ||
+          found.awayTeam?.name ||
           item.awayTeam,
 
         competition:
-          match.competition
+          found.competition
             ?.code ||
           item.competition ||
           "",
 
         utcDate:
-          match.utcDate ||
+          found.utcDate ||
           item.utcDate,
 
         homeGoals,
-
         awayGoals,
 
         market:
