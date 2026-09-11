@@ -474,8 +474,7 @@ function HistoryStats({
   const pending =
     history.filter(
       (item) =>
-        item.status ===
-        "PENDING"
+        item.status === "PENDING"
     ).length;
 
   const accuracy =
@@ -486,6 +485,111 @@ function HistoryStats({
           100
         ).toFixed(1)
       : "0.0";
+
+  /*
+   * Agrupar prognósticos pela DATA DO JOGO.
+   */
+  const predictionsByDate = {};
+
+  history.forEach(
+    (item) => {
+      if (!item.utcDate) {
+        return;
+      }
+
+      const date =
+        new Date(
+          item.utcDate
+        );
+
+      if (
+        Number.isNaN(
+          date.getTime()
+        )
+      ) {
+        return;
+      }
+
+      const dateKey =
+        new Intl.DateTimeFormat(
+          "en-CA",
+          {
+            timeZone:
+              "Europe/Lisbon",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+          }
+        ).format(date);
+
+      if (
+        !predictionsByDate[
+          dateKey
+        ]
+      ) {
+        predictionsByDate[
+          dateKey
+        ] = {
+          total: 0,
+          pending: 0,
+          completed: 0,
+          hits: 0,
+          misses: 0
+        };
+      }
+
+      predictionsByDate[
+        dateKey
+      ].total += 1;
+
+      if (
+        item.status ===
+        "PENDING"
+      ) {
+        predictionsByDate[
+          dateKey
+        ].pending += 1;
+      }
+
+      if (
+        item.status === "HIT" ||
+        item.status === "MISS"
+      ) {
+        predictionsByDate[
+          dateKey
+        ].completed += 1;
+      }
+
+      if (
+        item.status === "HIT"
+      ) {
+        predictionsByDate[
+          dateKey
+        ].hits += 1;
+      }
+
+      if (
+        item.status === "MISS"
+      ) {
+        predictionsByDate[
+          dateKey
+        ].misses += 1;
+      }
+    }
+  );
+
+  const dateRows =
+    Object.entries(
+      predictionsByDate
+    ).sort(
+      (a, b) =>
+        new Date(
+          `${b[0]}T12:00:00`
+        ) -
+        new Date(
+          `${a[0]}T12:00:00`
+        )
+    );
 
   const scoreRanges = [
     {
@@ -512,6 +616,8 @@ function HistoryStats({
 
   return (
     <div className="space-y-6">
+
+      {/* RESUMO */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
           <p className="text-[10px] text-gray-500 uppercase">
@@ -554,6 +660,114 @@ function HistoryStats({
         </div>
       </div>
 
+      {/* PROGNÓSTICOS POR DATA */}
+      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+        <div className="mb-4">
+          <h2 className="font-extrabold text-white">
+            Prognósticos por data do jogo
+          </h2>
+
+          <p className="text-[10px] text-gray-600 mt-1">
+            Distribuição dos prognósticos acumulados por dia.
+          </p>
+        </div>
+
+        {dateRows.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            Ainda não existem datas disponíveis.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {dateRows.map(
+              ([date, stats]) => {
+                const displayDate =
+                  new Date(
+                    `${date}T12:00:00`
+                  ).toLocaleDateString(
+                    "pt-PT",
+                    {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric"
+                    }
+                  );
+
+                const completedRate =
+                  stats.completed > 0
+                    ? (
+                        (stats.hits /
+                          stats.completed) *
+                        100
+                      ).toFixed(1)
+                    : "—";
+
+                return (
+                  <div
+                    key={date}
+                    className="bg-slate-900 rounded-xl p-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">
+                        {displayDate}
+                      </span>
+
+                      <span className="text-sm font-extrabold text-amber-400">
+                        {stats.total}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div>
+                        <p className="text-[10px] text-gray-600">
+                          Concluídos
+                        </p>
+
+                        <p className="text-sm font-bold text-white">
+                          {stats.completed}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] text-gray-600">
+                          Pendentes
+                        </p>
+
+                        <p className="text-sm font-bold text-amber-400">
+                          {stats.pending}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] text-gray-600">
+                          Acerto
+                        </p>
+
+                        <p className="text-sm font-bold text-emerald-400">
+                          {completedRate}
+                          {completedRate !==
+                            "—" &&
+                            "%"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {stats.completed >
+                      0 && (
+                      <p className="text-[10px] text-gray-600 mt-2">
+                        ✅ {stats.hits} acertos
+                        {" • "}
+                        ❌ {stats.misses} falhas
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* DESEMPENHO POR SCORE */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -603,7 +817,9 @@ function HistoryStats({
 
               return (
                 <div
-                  key={range.label}
+                  key={
+                    range.label
+                  }
                   className="bg-slate-900 rounded-xl p-3"
                 >
                   <div className="flex items-center justify-between">
@@ -614,7 +830,8 @@ function HistoryStats({
 
                     <span className="text-sm font-extrabold text-white">
                       {rate}
-                      {rate !== "—" &&
+                      {rate !==
+                        "—" &&
                         "%"}
                     </span>
                   </div>
@@ -635,6 +852,7 @@ function HistoryStats({
         </div>
       </div>
 
+      {/* ÚLTIMOS RESULTADOS */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
         <h2 className="font-extrabold text-white mb-4">
           Últimos resultados
@@ -651,71 +869,94 @@ function HistoryStats({
               .slice(-10)
               .reverse()
               .map(
-                (item) => (
-                  <div
-                    key={
-                      item.matchId
-                    }
-                    className="bg-slate-900 rounded-xl p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-white">
+                (item) => {
+                  const gameDate =
+                    item.utcDate
+                      ? new Date(
+                          item.utcDate
+                        ).toLocaleDateString(
+                          "pt-PT",
                           {
-                            item.homeTeam
-                          }{" "}
-                          <span className="text-gray-600">
-                            vs
-                          </span>{" "}
-                          {
-                            item.awayTeam
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            timeZone:
+                              "Europe/Lisbon"
                           }
-                        </p>
+                        )
+                      : null;
 
-                        <p className="text-[10px] text-gray-600 mt-1">
-                          {
-                            item.market
-                          }{" "}
-                          • Score{" "}
-                          {
-                            item.score
-                          }
-                        </p>
-                      </div>
+                  return (
+                    <div
+                      key={
+                        item.matchId
+                      }
+                      className="bg-slate-900 rounded-xl p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            {
+                              item.homeTeam
+                            }{" "}
+                            <span className="text-gray-600">
+                              vs
+                            </span>{" "}
+                            {
+                              item.awayTeam
+                            }
+                          </p>
 
-                      <div className="text-right">
-                        <p
-                          className={`text-xs font-extrabold ${
-                            item.status ===
+                          <p className="text-[10px] text-gray-600 mt-1">
+                            {item.market}
+                            {" • "}
+                            Score{" "}
+                            {item.score}
+                          </p>
+
+                          {gameDate && (
+                            <p className="text-[10px] text-gray-700 mt-1">
+                              Jogo:{" "}
+                              {gameDate}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="text-right">
+                          <p
+                            className={`text-xs font-extrabold ${
+                              item.status ===
+                              "HIT"
+                                ? "text-emerald-400"
+                                : "text-red-400"
+                            }`}
+                          >
+                            {item.status ===
                             "HIT"
-                              ? "text-emerald-400"
-                              : "text-red-400"
-                          }`}
-                        >
-                          {item.status ===
-                          "HIT"
-                            ? "✅ ACERTO"
-                            : "❌ FALHA"}
-                        </p>
+                              ? "✅ ACERTO"
+                              : "❌ FALHA"}
+                          </p>
 
-                        <p className="text-xs text-gray-500 mt-1">
-                          {
-                            item.homeGoals
-                          }
-                          -
-                          {
-                            item.awayGoals
-                          }
-                        </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {
+                              item.homeGoals
+                            }
+                            -
+                            {
+                              item.awayGoals
+                            }
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
+                  );
+                }
               )}
           </div>
         )}
       </div>
 
+      {/* PENDENTES */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500">
